@@ -1,0 +1,21 @@
+# dependabot 配置
+#
+# torch/torchvision 钉在 download.pytorch.org 的 cu124 索引上（GPU 训练需要）。
+# PyPI 上的默认 torch 是 CPU-only 构建，dependabot 的"升级"会把 GPU 支持降级掉，
+# 因此这里显式忽略 torch 的全部更新（要升级必须人工切到新的 cuXXX 索引并验证
+# torch.cuda.is_available()）。
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "torch"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "torchvision"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+    labels:
+      - "dependencies"
+      - "python"
