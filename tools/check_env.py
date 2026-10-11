@@ -1,7 +1,8 @@
 """mai-jev 环境自检：venv 关键版本 + GPU/CUDA 状态 + 三原语问题定义格式校验。
 
-用法：
-  python tools\check_env.py
+用法（Windows 控制台务必带 UTF-8，否则中文乱码）：
+  $env:PYTHONIOENCODING='utf-8'
+  python tools\\check_env.py
 
 Windows 控制台注意：直接跑会把中文按 GBK 打烂（乱码）。本脚本把 stdout 切成
 UTF-8，并在 WriteConsoleW 场景下也能正常显示。

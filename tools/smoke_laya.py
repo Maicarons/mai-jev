@@ -2,7 +2,7 @@
 
 用法（Windows 控制台务必带 UTF-8，否则中文乱码）：
   $env:PYTHONIOENCODING='utf-8'
-  python tools\smoke_laya.py
+  python tools\\smoke_laya.py
 
 已确认的 laya 0.4.3 API 约束（写在注释里，别再踩）：
   - `questions` 必须是 dict（question id -> definition），传 list 会
