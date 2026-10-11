@@ -1,0 +1,23 @@
+# mai-jev 训练环境锁定（Windows / G 盘）
+# 复现方式：
+#   uv venv --python 3.12 $WORK\venv
+#   uv pip install --python python -r requirements.txt \
+#       --index-url https://download.pytorch.org/whl/cu124
+# 注意：torch/torchvision 必须来自 download.pytorch.org 的 cu124 索引，
+# 默认 PyPI 上的 torch 2.14.1 是 +cpu 构建（torch_cuda.dll 缺符号 → WinError 127）。
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+transformers==5.19.0
+tokenizers==0.23.3
+safetensors==0.8.0
+datasets==5.1.0
+huggingface_hub==2.2.0
+numpy==2.5.2
+pyarrow==26.0.0
+pandas==3.0.6
+scikit-learn==1.9.1
+scipy==1.18.1
+psutil==7.2.2
+onnx==1.23.2
+onnxruntime==1.31.0
+evaluate==0.4.6
