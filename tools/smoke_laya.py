@@ -1,12 +1,26 @@
-"""Laya 基线冒烟：加载 laya-multilingual，跑中文 + 英文各一条三原语预测，记录延迟与置信度。
+"""mai-jev 冒烟：加载 laya-multilingual，跑中文 + 英文各一条三原语预测，记录延迟与置信度。
 
-用法：
+用法（Windows 控制台务必带 UTF-8，否则中文乱码）：
+  $env:PYTHONIOENCODING='utf-8'
   G:\mai-jev-work\venv\Scripts\python.exe G:\GitHub\mai-jev\tools\smoke_laya.py
+
+已确认的 laya 0.4.3 API 约束（写在注释里，别再踩）：
+  - `questions` 必须是 dict（question id -> definition），传 list 会
+    TypeError: questions must be a dict of question id -> definition, got list
+  - 问题定义里不写 "name" 字段，id 就是 dict 的 key。
+  - `choice` 用 `criteria`（dict label->描述 或 label 列表）；写 `options` 会被拒。
+  - `score` 的 `criteria` 是等级描述列表，index 0 = 最低分（不是 min/max）。
+  - `noul` 不写 criteria（若写只允许 {'true','false'}）。
+  - Router 默认按语言自动路由；中文工单要显式 `model='multilingual'`。
+  - 出厂 multilingual 检查点自带温度超界，会被 laya 钳到 0.5，置信度视为未标定：
+    laya: this checkpoint ships invalid temperatures or values outside [0.5, 5];
+    using choice:11+=0.1006 -> 0.5
 """
 
 from __future__ import annotations
 
 import json
+import sys
 import time
 
 import laya
@@ -61,12 +75,12 @@ def main() -> None:
     for lang, state in STATES.items():
         lat = []
         out = None
-        for i in range(3):
+        for _ in range(3):
             t = time.perf_counter()
             out = router.predict(state, QUESTIONS, model="multilingual", lang=lang)
             lat.append((time.perf_counter() - t) * 1000)
         results[lang] = {"latency_ms": [round(x, 1) for x in lat], "output": out}
-        print(f"[{lang}] latency_ms={[round(x,1) for x in lat]}")
+        print(f"[{lang}] latency_ms={[round(x, 1) for x in lat]}")
         print(json.dumps(out.get("answers", out), ensure_ascii=False, indent=2, default=str))
 
     print("\n--- Agent-level API (multilingual) ---")
@@ -82,4 +96,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Windows 控制台默认 GBK：切 UTF-8，避免中文乱码。
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     main()
