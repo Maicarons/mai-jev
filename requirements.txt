@@ -5,6 +5,7 @@
 #       --index-url https://download.pytorch.org/whl/cu124
 # 注意：torch/torchvision 必须来自 download.pytorch.org 的 cu124 索引，
 # 默认 PyPI 上的 torch 2.14.1 是 +cpu 构建（torch_cuda.dll 缺符号 → WinError 127）。
+# dependabot 会想把它升到 PyPI 默认版（CPU-only），已在 .github/dependabot.yml 里 ignore。
 torch==2.6.0+cu124
 torchvision==0.21.0+cu124
 transformers==5.19.0
