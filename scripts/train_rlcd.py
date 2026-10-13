@@ -34,6 +34,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -160,7 +161,50 @@ def cmd_run(args: argparse.Namespace) -> int:
     cmd = build_cmd(args)
     print("+ " + " ".join(cmd), flush=True)
     proc = subprocess.run(cmd)
+    write_train_config(args)
     return proc.returncode
+
+
+def write_train_config(args: argparse.Namespace) -> None:
+    """把本轮的全部超参与输入路径写成 `runs/<id>/train_config.yaml`。
+
+    票 #12 要求可复现：只靠命令历史不够，参数和输入的指纹必须落在 checkpoint 旁边。
+    laya 自己会把训练后的超参写进 `rl_agent_config.json`，但那是它视角的；
+    这里记的是**我们**怎么调的（含数据文件 sha256），两者互补。
+    """
+    out = Path(args.out)
+    if not out.exists():
+        return
+    try:
+        import torch
+
+        peak_mb = int(torch.cuda.max_memory_allocated() / 1024 / 1024) if torch.cuda.is_available() else 0
+    except Exception:  # 记不到显存不该让训练整体失败
+        peak_mb = -1
+
+    def digest(path: str) -> str:
+        p = Path(path)
+        if not p.exists():
+            return "missing"
+        return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+
+    lines = [
+        "# 由 scripts/train_rlcd.py run 自动生成，勿手改",
+        f"out: {out}",
+        f"peak_cuda_alloc_mb: {peak_mb}",
+        "",
+    ]
+    for flag in (
+        "data", "eval_data", "base", "loss", "epochs", "micro_batch", "grad_accum",
+        "encoder_lr", "head_lr", "label_smoothing", "max_len", "head_max_len",
+        "device", "seed", "freeze_encoder", "dry_run", "max_samples",
+    ):
+        value = getattr(args, flag, None)
+        lines.append(f"{flag}: {value}")
+        if flag in ("data", "eval_data") and value:
+            lines.append(f"{flag}_sha256_16: {digest(value)}")
+    (out / "train_config.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {out / 'train_config.yaml'}", flush=True)
 
 
 def main() -> None:
