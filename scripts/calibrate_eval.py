@@ -164,6 +164,13 @@ def summarise(view: list, qtype_name: dict) -> dict:
         out[name] = {
             "n": n,
             "accuracy": float(correct.mean()) if n else 0.0,
+            # 均衡准确率：每档准确率的宏平均。score 原语在 v03 上真实分布极度偏斜
+            # （test 241/343 都是 1 档），只看 accuracy 等于奖励「永远猜多数类」，
+            # 所以验收读的是这一个数。choice/noul 上它与 accuracy 接近。
+            "balanced_accuracy": float(np.mean(
+                [correct[np.array([it["gold"] == lv for it in items])].mean()
+                 for lv in sorted({it["gold"] for it in items})
+                 if (np.array([it["gold"] == lv for it in items])).sum()])) if n else 0.0,
             "soft_accuracy": float(np.mean([it["soft"] for it in items])) if n else 0.0,
             "ece": float(ece) if n else 0.0,
             "mean_confidence": float(confs.mean()) if n else 0.0,
@@ -310,6 +317,13 @@ def main() -> None:
                       [label, f"{v['coverage']:.4f}",
                        f"{v['accuracy']:.4f}" if v["accuracy"] is not None else "-", v["n"]]
                       for label, v in entry.get("tiers", {}).items()]), ""]
+
+    if any("balanced_accuracy" in (after.get(k) or {}) for k in after):
+        lines += ["每档准确率（score 原语分布偏斜，验收读这一项而不是 accuracy）：", "",
+                  md_table([["原语", "balanced accuracy", "accuracy"]] + [
+                      [name_of[k], f"{after[k]['balanced_accuracy']:.4f}",
+                       f"{after[k]['accuracy']:.4f}"]
+                      for k in ("choice", "score", "noul") if after.get(k)]), ""]
 
     def acc_row(label: str, src: dict | None) -> list:
         src = src or {}
