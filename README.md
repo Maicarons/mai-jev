@@ -62,23 +62,23 @@ python scripts/export_onnx.py --ckpt $WORK\ckpt\v0.1 --out $WORK\export
 python tools/bench_target.py --model $WORK\export\v0.1-int8.onnx
 ```
 
-> 脚本状态：`tools/smoke_laya.py` 已可用；`scripts/*` 随 #7 / #12 / #6 / #9 逐步落地，未落地前会明确说明。
+> 脚本状态：`scripts/build_dataset.py` 与 `scripts/train_rlcd.py` 已可用（数据 v0.2 = train 2,581 / calib 285 / test 343，见 [DATASETS.md](DATASETS.md)）；`scripts/calibrate_and_eval.py`（#6）与 `tools/bench_target.py`（#9）未落地，未落地前会明确说明。
 
 ## 当前进度
 
 | 票 | 内容 | 状态 |
 | --- | --- | --- |
 | #2 | 训练环境（G 盘 venv + consumer GPU cu124 校验） | ✅ closed |
-| #4 | 训练数据来源与许可证盘点 | 🔬 research 中 |
-| #3 | Laya 微调管线与 RLCD 实现拆解 | 🔬 research 中 |
-| #8 | 低端设备部署与量化路径 | 🔬 research 中 |
-| #11 | HF / ModelScope 发布流程与合规 | 🔬 research 中 |
-| #7 | 构建三原语训练数据集 | ⛔ 等 #4 |
-| #12 | RLCD 微调（先小样本后全量） | ⛔ 等 #3 #7 |
+| #3 | Laya 微调管线与 RLCD 实现拆解 | ✅ closed |
+| #4 | 训练数据来源与许可证盘点 | ✅ closed |
+| #7 | 构建三原语训练数据集 | ✅ closed（v0.2：3,209 行） |
+| #8 | 低端设备部署与量化路径 | 🚧 research 进行中 |
+| #11 | HF / ModelScope 发布流程与合规 | 🚧 research 进行中 |
+| #12 | RLCD 微调（先小样本后全量） | ⛔ 等 #7（已解锁） |
 | #6 | 温度标定与评测（ECE ≤0.10） | ⛔ 等 #12 |
 | #9 | 量化导出与靶机基准 | ⛔ 等 #6 #8 |
 | #5 | 发布到 HF 与 ModelScope（HITL：需用户 token） | ⛔ 等 #9 #11 |
-| #10 | 仓库基建：CONTEXT.md / ADR | 🚧 CONTEXT.md 已写 |
+| #10 | 仓库基建：CONTEXT.md / ADR / README / DATASETS.md | ✅ closed |
 
 ## 验收线
 
@@ -97,7 +97,7 @@ python tools/bench_target.py --model $WORK\export\v0.1-int8.onnx
 
 ## 许可证与致谢
 
-本项目代码 Apache-2.0；衍生自 [Laya](https://github.com/NandhaKishorM/laya)（作者 Nandakishor M / Convai Innovations，Apache-2.0）。模型卡将保留原作者署名、修改声明与 NOTICE，训练数据出处见 [DATASETS.md](DATASETS.md)（待 #7 落地）。
+本项目代码 Apache-2.0；衍生自 [Laya](https://github.com/NandhaKishorM/laya)（作者 Nandakishor M / Convai Innovations，Apache-2.0）。模型卡将保留原作者署名、修改声明与 NOTICE，训练数据出处、许可义务与署名声明见 [DATASETS.md](DATASETS.md)。
 
 ## 参考
 
