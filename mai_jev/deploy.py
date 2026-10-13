@@ -182,6 +182,8 @@ class Predictor:
 
         with open(os.path.join(model_dir, "questions.json"), encoding="utf-8") as fh:
             self.questions = json.load(fh)
+        # qid -> laya qtype，供标定/评测脚本复算 logits 时不必再引 laya。
+        self.qtype = {qid: QTYPE[q["type"]] for qid, q in self.questions.items()}
         with open(os.path.join(model_dir, "calibration.json"), encoding="utf-8") as fh:
             calib = json.load(fh)
         self.temperature = [float(t) for t in calib.get("temperature", [1.0, 1.0, 1.0])]
