@@ -89,13 +89,26 @@ def load_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in fh if line.strip()]
 
 
-def evaluate(rows: list[dict]) -> dict:
+def _labels_from_row(row: dict) -> dict:
+    """v0.1 schema 的 gold 标签；v0.2 的 `gold` 结构由 eval_checkpoint 传入解析器。"""
+    return row["labels"]
+
+
+def evaluate(rows: list[dict], gold_labels=None) -> dict:
+    """规则基线评测。
+
+    `gold_labels` 可选：调用方（`scripts/eval_checkpoint.py`）传入自己的 schema 解析器，
+    以便同一批行既能喂给 v0.2 的 `gold` 结构，也能喂给 v0.1 的 `labels` 结构。
+    """
+    if gold_labels is None:
+        gold_labels = _labels_from_row
+
     route_total = route_hit = 0
     urg_total = urg_hit = urg_off_by_one = 0
     noul_total = noul_hit = 0
     confusions: dict[str, dict[str, int]] = {}
     for row in rows:
-        gold = row["labels"]
+        gold = gold_labels(row)
         pred = predict_all(row["state"])
 
         route_total += 1

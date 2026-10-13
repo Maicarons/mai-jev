@@ -46,15 +46,48 @@ def argmax_label(qid: str, answer: dict) -> tuple[object, float]:
             return label, float(probs[label])
         return answer.get("choice"), float(answer.get("confidence", 0.0))
     if t == "noul":
+        # laya 对 noul 的返回有两种形状：`probabilities` 字典，或单个浮点 `noul`
+        # （= P(true)，见实测输出 {"type":"noul","noul":0.9014,...}）。
+        # 早先只读 probabilities，落到 `answer.get("choice")` 分支 —— 那个值是 0.9014
+        # 这种真值浮点，于是恒判 "true"，报出 0.36 的假准确率。
         probs = answer.get("probabilities") or {}
         if probs:
             label = "true" if probs.get("true", 0.0) >= probs.get("false", 0.0) else "false"
             return label, float(probs.get(label, 0.0))
-        return ("true" if answer.get("choice") else "false"), float(answer.get("confidence", 0.0))
+        p_true = answer.get("noul")
+        if p_true is None:
+            raise KeyError(f"noul answer carries neither probabilities nor noul: {sorted(answer)}")
+        return ("true" if float(p_true) >= 0.5 else "false"), float(p_true)
     if t == "score":
         # laya 的 score 输出是 [0, n_levels-1] 的连续值；我们对外是 1..5。
         return int(round(float(answer.get("score", 0.0)) + SCORE_OFFSET)), float(answer.get("confidence", 0.0))
     raise ValueError(f"unknown answer type {t!r}")
+
+
+def gold_labels(row: dict) -> dict:
+    """从一行数据取三个原语的 gold 标签，两种 schema 都支持：
+
+      * v0.1 冒烟数据：`{"labels": {"route_team": "售后", "urgency": "3", ...}}`
+      * v0.2（#7 的 build_dataset.py）：`{"gold": {"route_team": {"probabilities": {...}},
+        "urgency": {"probabilities": {"0": 0.9, ...}}, "needs_refund_or_escalation": {...}}}`
+        v0.2 的 score key 已经是 0-based（build_dataset.py 内做了 SCORE_OFFSET），
+        这里再 +SCORE_OFFSET 补回对外的 1..5。
+    """
+    gold = row.get("gold")
+    if not isinstance(gold, dict):
+        # v0.1：labels 里 urgency 可能是字符串，统一成 int 供 off-by-one 计算。
+        labels = row["labels"]
+        return {**labels, "urgency": int(labels["urgency"])}
+
+    def argmax_probs(qid: str) -> str:
+        probs = gold[qid]["probabilities"]
+        return max(probs, key=lambda k: probs[k])
+
+    return {
+        "route_team": argmax_probs("route_team"),
+        "urgency": int(argmax_probs("urgency")) + SCORE_OFFSET,
+        "needs_refund_or_escalation": argmax_probs("needs_refund_or_escalation"),
+    }
 
 
 def main() -> None:
@@ -84,7 +117,7 @@ def main() -> None:
     confusion: dict[str, dict[str, int]] = {}
 
     for row in rows:
-        gold = row["labels"]
+        gold = gold_labels(row)
         # predict() 返回 {answers: {qid: {...}}, usage: {...}}；decide() 是 structured
         # 那条路（要 JSON schema），我们这里是三原语 questions dict，用 predict。
         payload = agent.predict(row["state"], questions)
@@ -124,7 +157,7 @@ def main() -> None:
         report["questions"][qid] = entry
 
     if args.baseline:
-        report["baseline_rules"] = evaluate_baseline(rows)
+        report["baseline_rules"] = evaluate_baseline(rows, gold_labels=gold_labels)
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if args.out:
