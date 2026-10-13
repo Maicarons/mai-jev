@@ -10,3 +10,8 @@ dist/
 .mypy_cache/
 .DS_Store
 Thumbs.db
+
+# 数据集与模型产物（体量大、可重建，只在 data/README.md 记录重建方式）
+data/raw/
+data/adapted/
+$WORK/
