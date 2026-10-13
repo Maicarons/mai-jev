@@ -49,6 +49,33 @@ from typing import Dict, Optional, Sequence
 # 部署侧的依赖下限。onnxruntime 只在 CPU 上跑，所以 CPU 目标机不需要 CUDA。
 DEPLOY_REQUIRES = {"onnxruntime": ">=1.17", "tokenizers": ">=0.15", "numpy": ">=1.24"}
 
+# 工单正文至少要留下这么多 token 才算可用输入（见 mai_jev.deploy.MIN_STATE_ROOM）。
+MIN_STATE_ROOM = 32
+
+
+def deploy_head_lengths(model_dir: Path, head_max_len: int) -> Dict[str, int]:
+    """用与部署侧完全相同的代码量出每个 question head 的 token 数。
+
+    必须走 mai_jev.deploy 而不是 laya：这里量的是「发布时真正会拼进图里的长度」，
+    两条路径哪怕差一个 token 都会让 state 预算算错。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from mai_jev.deploy import SPECIAL_TOKENS, _Head  # noqa: E402
+    from tokenizers import Tokenizer  # noqa: E402
+
+    tok = Tokenizer.from_file(str(model_dir / "tokenizer" / "tokenizer.json"))
+    tok.no_truncation()
+    tok.no_padding()
+    ids = {t: tok.token_to_id(t) for t in SPECIAL_TOKENS}
+    missing = [t for t, i in ids.items() if i is None or i < 0]
+    if missing:
+        raise SystemExit("tokenizer.json 缺少 special token: %s" % missing)
+    questions = json.loads((model_dir / "questions.json").read_text(encoding="utf-8"))
+    return {
+        qid: len(_Head(tok, q, head_max_len, ids["mask"], ids["cls"], ids["sep"]).ids)
+        for qid, q in questions.items()
+    }
+
 
 def sha256(path: Path, chunk: int = 1 << 20) -> str:
     h = hashlib.sha256()
@@ -125,6 +152,21 @@ def main() -> int:
     cfg = load_cfg(model_dir)
     max_len = args.max_len or int(cfg.get("max_len", 512))
     head_max_len = args.head_max_len or int(cfg.get("head_max_len", 64))
+
+    # 硬闸门：question head 比 max_len 还长时，整条 state 会被静默丢弃
+    # （Predictor._feed 的 room = max_len - len(head.ids) - 1 变成负数），
+    # 模型退化成「不看工单、只看问句」——v03 在 max_len=96 上就是这样
+    # route_team 0.945→0.187 的。不要用「能跑就行」糊过去。
+    head_lens = deploy_head_lengths(model_dir, head_max_len)
+    longest = max(head_lens.values())
+    if longest + 1 > max_len:
+        raise SystemExit(
+            "max_len=%d 装不下最长的 question head（%d tokens，来自 %s）："
+            "state 预算为 %d，整条工单会被丢弃，模型只看问句。"
+            "请把 --max-len 提到 %d 以上。"
+            % (max_len, longest, max(head_lens, key=lambda k: head_lens[k]),
+               max(0, max_len - longest - 1), longest + 1)
+        )
     deploy_config = {
         "variant": args.variant,
         "max_len": max_len,

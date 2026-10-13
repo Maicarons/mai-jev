@@ -68,6 +68,9 @@ MAX_HEAD_INSTRUCTION = 8
 # laya.train.QTYPE_NAMES（laya/common.py 的 temp_bucket 拼档名要用它）。
 QTYPE_NAMES = ("choice", "score", "noul")
 
+# 工单正文至少要留下这么多 token 才算可用输入。低于这个数模型基本等于没看工单。
+MIN_STATE_ROOM = 32
+
 
 def _render_criterion(value: Any) -> str:
     """与 `laya.common.render_criterion` 等价：非字符串结构体渲染成单行 JSON。"""
@@ -198,6 +201,20 @@ class Predictor:
             for qid, q in self.questions.items()
         }
 
+        # 闸门：head 比 max_len 长时 state 预算为负，工单正文会被整段丢弃，
+        # 模型退化成「只看问句」。这不会报错，只会静默地让准确率崩掉
+        # （v03 在 max_len=96 上 route_team 0.945→0.187），所以必须在这里喊出来。
+        self.state_room = {}
+        for qid, head in self._heads.items():
+            room = self.max_len - len(head.ids) - 1
+            if room < MIN_STATE_ROOM:
+                raise ValueError(
+                    "max_len=%d 装不下 question head %r（%d tokens）：state 只剩 %d token，"
+                    "工单正文会被丢弃。这个 max_len 不可用，请至少设到 %d。"
+                    % (self.max_len, qid, len(head.ids), room, len(head.ids) + 1 + MIN_STATE_ROOM)
+                )
+            self.state_room[qid] = room
+
         so = ort.SessionOptions()
         so.intra_op_num_threads = threads
         so.inter_op_num_threads = 1
@@ -211,7 +228,7 @@ class Predictor:
         head = self._heads[qid]
         text = str(text).replace(SPECIAL_TOKENS["mask"][0], " ")
         state_ids = self.tokenizer.encode(text, add_special_tokens=False).ids[: self.max_len]
-        room = max(0, self.max_len - len(head.ids) - 1)
+        room = self.state_room[qid]
         ids = head.ids + state_ids[:room] + [self.sep_id]
         ids = ids[: self.max_len]
         markers = [m for m in head.markers if m < self.max_len]
