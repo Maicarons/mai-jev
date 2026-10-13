@@ -1,0 +1,11 @@
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=16pt, width=0.9\linewidth, height=4.6cm,
+  ymin=0, ymax=0.12, ylabel={ECE}, symbolic x coords={route\_team,urgency,noul},
+  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,
+  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]
+\addplot coordinates {(route\_team,\EceBeforeChoice) (urgency,\EceBeforeScore) (noul,\EceBeforeNoul)};
+\addlegendentry{before temperature scaling}
+\addplot coordinates {(route\_team,\EceChoice) (urgency,\EceScore) (noul,\EceNoul)};
+\addlegendentry{after temperature scaling}
+\end{axis}
+\end{tikzpicture}

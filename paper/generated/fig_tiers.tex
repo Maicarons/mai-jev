@@ -1,0 +1,14 @@
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=10pt, width=0.9\linewidth, height=4.8cm,
+  ymin=0, ymax=1, ylabel={fraction}, symbolic x coords={auto$\geq$0.9,review 0.6--0.9,human$<$0.6},
+  xtick=data, legend style={at={(0.5,-0.20)},anchor=north,legend columns=-1}, legend cell align=left]
+\addplot coordinates {(auto$\geq$0.9,\AutoCovScore) (review 0.6--0.9,\ReviewCovScore) (human$<$0.6,\HumanCovScore)};
+\addlegendentry{urgency: coverage}
+\addplot coordinates {(auto$\geq$0.9,\AutoAccScore) (review 0.6--0.9,\ReviewAccScore) (human$<$0.6,\HumanAccScore)};
+\addlegendentry{urgency: accuracy in tier}
+\addplot coordinates {(auto$\geq$0.9,\AutoCovNoul) (review 0.6--0.9,\ReviewCovNoul) (human$<$0.6,\HumanCovNoul)};
+\addlegendentry{noul: coverage}
+\addplot coordinates {(auto$\geq$0.9,\AutoAccNoul) (review 0.6--0.9,\ReviewAccNoul) (human$<$0.6,\HumanAccNoul)};
+\addlegendentry{noul: accuracy in tier}
+\end{axis}
+\end{tikzpicture}

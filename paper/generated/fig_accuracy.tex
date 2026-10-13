@@ -1,0 +1,15 @@
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=14pt, width=0.9\linewidth, height=5.2cm,
+  ymin=0, ymax=1, ylabel={accuracy}, symbolic x coords={route\_team,urgency,noul},
+  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,
+  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]
+\addplot coordinates {(route\_team,\RulesAccChoice) (urgency,\RulesAccScore) (noul,\RulesAccNoul)};
+\addlegendentry{rule baseline}
+\addplot coordinates {(route\_team,\OrigAccChoice) (urgency,\OrigAccScore) (noul,\OrigAccNoul)};
+\addlegendentry{original laya-multilingual}
+\addplot coordinates {(route\_team,\MajAccChoice) (urgency,\MajAccScore) (noul,\MajAccNoul)};
+\addlegendentry{majority class}
+\addplot coordinates {(route\_team,\AccChoice) (urgency,\AccScore) (noul,\AccNoul)};
+\addlegendentry{mai-jev (ours)}
+\end{axis}
+\end{tikzpicture}

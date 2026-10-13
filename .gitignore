@@ -1,17 +1,16 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-build/
-dist/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.DS_Store
-Thumbs.db
+# LaTeX 中间产物：编译产生的，不进版本库。
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.xdv
+*.synctex.gz
+# 只留源文件，编译结果不进版本库。
+*.pdf
 
-# 数据集与模型产物（体量大、可重建，只在 data/README.md 记录重建方式）
-data/raw/
-data/adapted/
-$WORK/
+# 排错脚本的临时产物：这些是一次性探针，用完就删，不留下当依赖。
+probe_*.py
+scripts/_probe_*.py

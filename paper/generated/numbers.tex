@@ -1,0 +1,116 @@
+% 由 scripts/make_paper_tables.py 生成，请勿手工编辑。
+% 每个宏的来源写在注释里；论文正文只引用宏名。
+\newcommand{\DataTotalRows}{3209}  % $WORK\data\adapted\build_report.json:total
+\newcommand{\RowsTrain}{2581}  % $WORK\data\adapted\build_report.json:splits.train
+\newcommand{\RowsCalib}{285}  % $WORK\data\adapted\build_report.json:splits.calib
+\newcommand{\RowsTest}{343}  % $WORK\data\adapted\build_report.json:splits.test
+\newcommand{\RowsTrainBalanced}{9425}  % $WORK\data\adapted_v03\mai_jev_train_balanced.laya.jsonl:行数（由 balance_urgency.py 写出）
+\newcommand{\TokBudget}{768}  % $WORK\data\adapted\build_report.json:token_length.budget
+\newcommand{\TokPFiveZero}{88}  % $WORK\data\adapted\build_report.json:token_length.p50
+\newcommand{\TokPNineNine}{119}  % $WORK\data\adapted\build_report.json:token_length.p99
+\newcommand{\TokMax}{147}  % $WORK\data\adapted\build_report.json:token_length.max
+\newcommand{\SeedAll}{20261013}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:seed
+\newcommand{\UrgDistAfterZero}{241}  % $WORK\data\adapted_v03\relabel_report.json:test.level_dist_0based_after[0]
+\newcommand{\UrgDistAfterOne}{46}  % $WORK\data\adapted_v03\relabel_report.json:test.level_dist_0based_after[1]
+\newcommand{\UrgDistAfterTwo}{10}  % $WORK\data\adapted_v03\relabel_report.json:test.level_dist_0based_after[2]
+\newcommand{\UrgDistAfterThree}{36}  % $WORK\data\adapted_v03\relabel_report.json:test.level_dist_0based_after[3]
+\newcommand{\UrgDistAfterFour}{10}  % $WORK\data\adapted_v03\relabel_report.json:test.level_dist_0based_after[4]
+\newcommand{\AccChoice}{0.9475}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.choice.accuracy
+\newcommand{\BAccChoice}{0.9561}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.choice.balanced_accuracy
+\newcommand{\SoftAccChoice}{0.8217}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.choice.soft_accuracy
+\newcommand{\EceChoice}{0.0871}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.choice.ece
+\newcommand{\EceBeforeChoice}{0.0527}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_before.choice.ece
+\newcommand{\ConfChoice}{0.8627}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.choice.mean_confidence
+\newcommand{\TChoice}{1.1131}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:temperature[0]
+\newcommand{\AccScore}{0.9329}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.score.accuracy
+\newcommand{\BAccScore}{0.8009}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.score.balanced_accuracy
+\newcommand{\SoftAccScore}{0.8988}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.score.soft_accuracy
+\newcommand{\EceScore}{0.0248}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.score.ece
+\newcommand{\EceBeforeScore}{0.0666}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_before.score.ece
+\newcommand{\ConfScore}{0.9538}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.score.mean_confidence
+\newcommand{\TScore}{3.6752}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:temperature[1]
+\newcommand{\AccNoul}{0.8513}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.noul.accuracy
+\newcommand{\BAccNoul}{0.8506}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.noul.balanced_accuracy
+\newcommand{\SoftAccNoul}{0.7234}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.noul.soft_accuracy
+\newcommand{\EceNoul}{0.0846}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.noul.ece
+\newcommand{\EceBeforeNoul}{0.0384}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_before.noul.ece
+\newcommand{\ConfNoul}{0.8075}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.noul.mean_confidence
+\newcommand{\TNoul}{1.4596}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:temperature[2]
+\newcommand{\RulesAccChoice}{0.4373}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_rules.route_team
+\newcommand{\MajAccChoice}{0.3586}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_majority_class.route_team
+\newcommand{\OrigAccChoice}{0.4898}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_original_laya_multilingual.choice.accuracy
+\newcommand{\RulesAccScore}{0.5918}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_rules.urgency
+\newcommand{\MajAccScore}{0.7026}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_majority_class.urgency
+\newcommand{\OrigAccScore}{0.0845}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_original_laya_multilingual.score.accuracy
+\newcommand{\RulesAccNoul}{0.4111}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_rules.needs_refund_or_escalation
+\newcommand{\MajAccNoul}{0.6356}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_majority_class.needs_refund_or_escalation
+\newcommand{\OrigAccNoul}{0.6414}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:baseline_original_laya_multilingual.noul.accuracy
+\newcommand{\OrigAccMacro}{0.4052}  % 原版三原语 accuracy 的平均
+\newcommand{\MacroAcc}{0.9106}  % 由 test_after 三原语 accuracy 求平均
+\newcommand{\MacroAccBefore}{0.9106}  % 由 test_before 三原语 accuracy 求平均
+\newcommand{\WorstEce}{0.0871}  % 三原语中最大的标定后 ECE
+\newcommand{\TrainEceAfter}{0.0697}  % $WORK\runs\v03_rlcd_bal\train_report.json:after.ece（未标定）
+\newcommand{\TrainAccBefore}{0.4052}  % $WORK\runs\v03_rlcd_bal\train_report.json:before.accuracy（原版权重）
+\newcommand{\TrainAccAfter}{0.9106}  % $WORK\runs\v03_rlcd_bal\train_report.json:after.accuracy
+\newcommand{\AutoCovChoice}{0.0000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[auto>=0.9].coverage
+\newcommand{\AutoAccChoice}{0.0000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[auto>=0.9].coverage 为 0，该档无样本，命中率记 0
+\newcommand{\ReviewCovChoice}{0.9883}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[review0.6-0.9].coverage
+\newcommand{\ReviewAccChoice}{0.9499}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[review0.6-0.9].accuracy
+\newcommand{\HumanCovChoice}{0.0117}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[human<0.6].coverage
+\newcommand{\HumanAccChoice}{0.7500}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.route_team.tiers[human<0.6].accuracy
+\newcommand{\AutoCovScore}{0.9359}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[auto>=0.9].coverage
+\newcommand{\AutoAccScore}{0.9502}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[auto>=0.9].accuracy
+\newcommand{\ReviewCovScore}{0.0583}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[review0.6-0.9].coverage
+\newcommand{\ReviewAccScore}{0.7000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[review0.6-0.9].accuracy
+\newcommand{\HumanCovScore}{0.0058}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[human<0.6].coverage
+\newcommand{\HumanAccScore}{0.5000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.urgency.tiers[human<0.6].accuracy
+\newcommand{\AutoCovNoul}{0.0000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[auto>=0.9].coverage
+\newcommand{\AutoAccNoul}{0.0000}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[auto>=0.9].coverage 为 0，该档无样本，命中率记 0
+\newcommand{\ReviewCovNoul}{0.9825}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[review0.6-0.9].coverage
+\newcommand{\ReviewAccNoul}{0.8546}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[review0.6-0.9].accuracy
+\newcommand{\HumanCovNoul}{0.0175}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[human<0.6].coverage
+\newcommand{\HumanAccNoul}{0.6667}  % $WORK\runs\v03_rlcd_bal\paper_eval\calibration_eval.json:test_after.needs_refund_or_escalation.tiers[human<0.6].accuracy
+\newcommand{\BenchThreads}{4}  % $WORK\export\v03_bench_final.json:threads
+\newcommand{\BenchN}{150}  % $WORK\export\v03_bench_final.json:n
+\newcommand{\BenchMaxLen}{256}  % $WORK\export\v03_bench_final.json:max_len
+\newcommand{\LatPFiveZero}{498.65}  % $WORK\export\v03_bench_final.json:latency_ms.p50（三原语合计）
+\newcommand{\LatPNineFive}{975.58}  % $WORK\export\v03_bench_final.json:latency_ms.p95
+\newcommand{\LatMean}{583.81}  % $WORK\export\v03_bench_final.json:latency_ms.mean
+\newcommand{\RssMb}{795.4}  % $WORK\export\v03_bench_final.json:rss_after_load_MB
+\newcommand{\RssPeakMb}{813.2}  % $WORK\export\v03_bench_final.json:rss_peak_MB
+\newcommand{\LoadS}{3.87}  % $WORK\export\v03_bench_final.json:load_seconds
+\newcommand{\ModelMb}{666.0}  % quant_report.json:model_mb
+\newcommand{\FpThreeTwoMb}{1228.6}  % quant_report.json:fp32_model_mb
+\newcommand{\QuantDeltaChoice}{0.0000}  % quant_report.json:degradation.route_team
+\newcommand{\QuantDeltaScore}{-0.0029}  % quant_report.json:degradation.urgency
+\newcommand{\QuantDeltaNoul}{0.0029}  % quant_report.json:degradation.needs_refund_or_escalation
+\newcommand{\TChoiceOnnx}{1.1126}  % $WORK\export\v03-int8-ml256\calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\TScoreOnnx}{3.6829}  % $WORK\export\v03-int8-ml256\calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\TNoulOnnx}{1.4678}  % $WORK\export\v03-int8-ml256\calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\QuantWholeMb}{308.6}  % bench_report.json:int8_full_graph_per_channel.size_mb
+\newcommand{\QuantWholeMaxD}{2.312}  % bench_report.json:int8_full_graph_per_channel.max_dlogit 的最大值
+\newcommand{\QuantGatherMaxD}{0.1051}  % bench_report.json:int8_gather_only.max_dlogit 的最大值
+\newcommand{\AgreeNum}{1.000}  % bench_report.json:parity.by_max_len.512.argmax_agreement 的平均
+\newcommand{\ThreadsTOne}{835.5}  % bench_report.json:thread_scaling[threads=1].p50_ms
+\newcommand{\ThreadsTEight}{332.0}  % bench_report.json:thread_scaling[threads=8].p50_ms
+\newcommand{\FpThreeTwoRssMb}{1361.3}  % bench_report.json:fp32 变体的 rss_after_load_mb
+\newcommand{\ParityTokMismatch}{0 / 120}  % bench_report.json:parity.token_id_mismatch
+\newcommand{\StateOnlyMs}{283.1}  % docs\research\v03-latency.md:state 预算为 0（完全不读工单）时三原语合计 p50
+\newcommand{\StateFullMs}{383.6}  % docs\research\v03-latency.md:state 预算满时三原语合计 p50
+\newcommand{\BatchMergedMs}{824.9}  % docs\research\v03-latency.md:batch=3 合并成一次前向的 p50
+\newcommand{\BatchSeparateMs}{748.0}  % docs\research\v03-latency.md:三次 batch=1 各自前向的合计 p50
+\newcommand{\HeadLenChoice}{109}  % docs\research\v03-latency.md:route_team 的 head token 长度
+\newcommand{\HeadLenScore}{110}  % docs\research\v03-latency.md:urgency 的 head token 长度
+\newcommand{\EceOnnxChoice}{0.0870}  % $WORK\export\v03_int8_calib_report.json:test_by_qtype.choice.ece_after（在 int8 图上标定后）
+\newcommand{\EceOnnxScore}{0.0300}  % $WORK\export\v03_int8_calib_report.json:test_by_qtype.score.ece_after（在 int8 图上标定后）
+\newcommand{\EceOnnxNoul}{0.0927}  % $WORK\export\v03_int8_calib_report.json:test_by_qtype.noul.ece_after（在 int8 图上标定后）
+\newcommand{\EceWorstOnnx}{0.0927}  % $WORK\export\v03_int8_calib_report.json:worst_ece_after（三原语里最大的标定后 ECE）
+\newcommand{\AccOnnxScore}{0.9359}  % $WORK\export\v03_int8_calib_report.json:test_by_qtype.score.accuracy（部署变体自身的 test 准确率）
+\newcommand{\CalibRecords}{855}  % $WORK\export\v03_int8_calib_report.json:calib_records
+\newcommand{\AccScoreVZeroTwo}{0.5948}  % $WORK\runs\v02_rlcd_e2\calibration_eval.json:test_after_calibration.score.accuracy
+\newcommand{\DeltaUrg}{0.3381}  % v03 与 v02 的 urgency 准确率之差（proxy 标签修复的净收益）
+\newcommand{\SelfCheckN}{14}  % $WORK\data\adapted_v03\relabel_report.json:selfcheck.divergence 的分母
+\newcommand{\SelfCheckDisagree}{3}  % $WORK\data\adapted_v03\relabel_report.json:selfcheck.divergence 的分子（模型与规则基线分歧数）
+\newcommand{\TokMb}{32.8}  % $WORK\export\v03-int8-ml256\tokenizer\tokenizer.json: 文件大小
+\newcommand{\AccCollapsed}{0.1866}  % docs\research\v03-quant-degradation.md:max_len 装不下 head 时 route_team 的准确率（正常值 0.9446）
+\newcommand{\AccScoreBroken}{0.7026}  % docs\research\v03-quant-degradation.md:同一条件下 urgency 的准确率

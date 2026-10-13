@@ -120,6 +120,7 @@ def main() -> None:
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--seed", type=int, default=20261013)
     ap.add_argument("--write", action="store_true", help="覆盖 <model-dir>/calibration.json")
+    ap.add_argument("--report", help="把 test 上的 before/after 指标写成 JSON（论文数字的唯一来源）")
     args = ap.parse_args()
 
     from laya.calibrate import fit_temperature_map
@@ -157,6 +158,35 @@ def main() -> None:
                   f"{b['ece']:>10.4f}{a['ece']:>10.4f}")
         worst = max(r["ece"] for r in after.values())
         print(f"  最差单原语 ECE = {worst:.4f} {'PASS' if worst <= 0.10 else 'FAIL'} (目标 ≤0.10)")
+        if args.report:
+            # 论文里「量化变体自己的标定」那段的数字全部来自这个文件。
+            # 之前只往 stdout 打印，stdout 不是可被脚本再生的数据源，所以这里补一个落盘。
+            rep = {
+                "model_dir": args.model_dir,
+                "max_len": predictor.max_len,
+                "threads": args.threads,
+                "seed": args.seed,
+                "temperature_torch_side": [round(float(t), 6) for t in old],
+                "temperature_this_graph": [round(float(t), 6) for t in temps],
+                "calib_records": len(calib_recs),
+                "test_records": len(test_recs),
+                "test_by_qtype": {
+                    k: {
+                        "n": after[k]["n"],
+                        "accuracy": round(after[k]["accuracy"], 6),
+                        "mean_confidence": round(after[k]["mean_confidence"], 6),
+                        "ece_before": round(before[k]["ece"], 6) if before.get(k) else None,
+                        "ece_after": round(after[k]["ece"], 6),
+                    }
+                    for k in after
+                },
+                "worst_ece_after": round(worst, 6),
+            }
+            Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.report).write_text(
+                json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            print(f"  报告已写入 {args.report}")
 
     if args.write:
         payload = {
