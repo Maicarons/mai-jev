@@ -11,6 +11,10 @@
 # 只留源文件，编译结果不进版本库。
 *.pdf
 
+# Python 字节码。
+__pycache__/
+*.pyc
+
 # 排错脚本的临时产物：这些是一次性探针，用完就删，不留下当依赖。
 probe_*.py
 scripts/_probe_*.py
