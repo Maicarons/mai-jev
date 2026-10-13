@@ -61,9 +61,21 @@ LAYA_TRAIN = [sys.executable, "-c", _LAYA_BOOT]
 SPLITS = ("train", "calib", "test")
 
 def to_laya_row(rec: dict) -> dict:
-    """我们的一行 -> laya 的 `{state, questions, expected}` 行。"""
-    labels = rec["labels"]
+    """我们的一行 -> laya 的 `{state, questions, expected}` 行。
+
+    两种输入 schema 都支持：
+      * v0.1（#7 之前的冒烟数据）：`{state, labels:{...}}`，本函数负责换算。
+      * v0.2（#7 的 `scripts/build_dataset.py`）：已经是 laya 形状
+        `{state, questions, gold:{qid:{probabilities:...}}}`，只清 `[MASK]` 后直通。
+        它的 `gold.urgency.probabilities` 的 key 已经是 0-based（build_dataset.py
+        内做掉 SCORE_OFFSET），所以不能再减一次。
+    """
     state = rec["state"].replace("[MASK]", " ")
+    if "gold" in rec and isinstance(rec["gold"], dict):
+        # v0.2：已带 questions + gold，laya.items_from_rows 直接吃
+        # （laya/train.py:320-339）。原样透传，只做 MASK 清理。
+        return {**rec, "state": state}
+    labels = rec["labels"]
     expected = {
         "route_team": labels["route_team"],
         # laya 的 score 是 0-based level index；我们对外用 1..5。
