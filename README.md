@@ -2,8 +2,8 @@
 
 > 基座：[`convaiinnovations/laya-multilingual`](https://huggingface.co/convaiinnovations/laya)（322M，mmBERT-base 编码器 + 决策头，Apache-2.0）
 > 训练：RLCD（Reinforcement Learning for Calibrated Decisions）+ 温度标定
-> 目标靶机：x86 CPU-only 老笔记本 / 中端手机 —— **常驻内存 ≤1GB、4 线程、单问题 p50 < 50ms**
-> 发布：Hugging Face `Maicarons/mai-jev-*` 与 ModelScope 同名仓库（URL 待回填，见 #5）
+> 目标靶机：x86 CPU-only 老笔记本 / 中端手机 —— **常驻内存 ≤1GB、4 线程、三原语合计 p50 < 500ms**
+> 发布：ModelScope [`Mai2026/mai-jev-zh-support`](https://www.modelscope.cn/models/Mai2026/mai-jev-zh-support) 已上线（Hugging Face 待用户补齐 token，见 #5）
 
 ## 这是什么
 
