@@ -62,9 +62,11 @@ This repo ships **two deployable artifacts** plus the source checkpoint:
   `encoder/config.json`, `tokenizer/`, `rl_agent_config.json`, `questions.json`,
   `calibration.json`. Load with `laya.load("<this repo>")`.
 - **`onnx/` — CPU int8 deployment variant** (torch-free): `model.onnx`
-  (~698 MB, dynamic int8 per-channel), its own `calibration.json`,
-  `questions.json`, `deploy_config.json`, `tokenizer/tokenizer.json`,
-  `MANIFEST.json`. Load with `mai_jev.deploy.Predictor("onnx/")`.
+  (~698 MB, `int8-gather`: only the embedding `Gather` is quantised, every `MatMul`
+  stays fp32 — whole-graph dynamic int8 perturbs logits by 2.31 and was rejected),
+  its own `calibration.json`, `questions.json`, `deploy_config.json`,
+  `tokenizer/tokenizer.json`, `MANIFEST.json`. Load with
+  `mai_jev.deploy.Predictor("onnx/")`.
 
 > The int8 variant carries its **own** `calibration.json`. Temperature is a
 > property of (weights × inference backend); never reuse the torch temperatures
@@ -100,15 +102,14 @@ primitives.
 | Model | route_team | urgency | noul | macro |
 | --- | --- | --- | --- | --- |
 | **mai-jev (torch, calibrated)** | 0.9475 | 0.9329 | 0.8513 | **0.9106** |
-| mai-jev (int8 ONNX, calibrated) | 0.9096\* | 0.4606\* | 0.8397\* | — |
-| `convaiinnovations/laya-multilingual` (base, zero-shot) | — | — | — | 0.4373 |
+| mai-jev (shipped int8-gather ONNX, calibrated) | 0.9475 | 0.9359 | 0.8484 | 0.9106 |
+| `convaiinnovations/laya-multilingual` (base, zero-shot) | 0.4898 | 0.0845 | 0.6414 | 0.4052 |
 | Keyword rule baseline | 0.4373 | 0.5918 | 0.4111 | — |
+| Majority class | 0.3586 | 0.7026 | 0.6356 | — |
 
-\* The int8 ONNX column is the **uncalibrated** forward pass measured during
-quantisation; after re-fitting temperature on the calibration split the int8
-variant reproduces the torch argmax agreement ≥ 0.94 on every primitive and its
-worst single-primitive ECE is 0.0927. Worst single-primitive ECE for the torch
-variant is 0.0871.
+Quantisation costs at most **0.29 accuracy points** on any primitive (whole 343-row
+test split, eager vs. int8-gather graph). Worst single-primitive ECE after re-fitting
+temperature on each variant's own calibration split: **0.0871 (torch) / 0.0927 (int8)**.
 
 ### Calibration
 
@@ -122,16 +123,29 @@ inference. Expected Calibration Error (ECE, 15 bins) on the held-out test set:
 > not ECE, so individual primitives can move slightly after calibration. Do not
 > treat "ECE ≤ 0.10" as a guaranteed bound across deployments or data shifts.
 
-## Efficiency (int8 ONNX, target machine)
+## Efficiency (int8-gather ONNX, target machine)
 
-Measured on the release variant (`onnx/`, dynamic int8 per-channel), 4 threads,
-batch=1, 1029 real tickets:
+Measured on the release variant (`onnx/`, `int8-gather`, `max_len=256`), 4 threads,
+batch=1, exact-length inference, 150 real tickets, one ticket through all three
+primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
 
-- Resident memory: **795.9 MB** (≤ 1 GB target met)
-- Latency (one ticket, all three primitives): **p50 = 380 ms**, p95 = 433 ms
-  (the acceptance target was restated to "three primitives combined p50 < 500 ms"
-  after measurement showed a single-primitive p50 < 50 ms is unreachable at this
-  size on 4 CPU threads)
+- Resident memory: **796 MB** (≤ 1 GB target met)
+- Latency: **p50 = 421–499 ms, p95 = 862–976 ms**, mean 530–584 ms (range over two
+  runs on the same host)
+
+> **Read this before quoting the latency.** The numbers above are the release
+> variant's own end-to-end measurement, and they are the ones to trust. An earlier
+> published figure — p50 380 ms — came from `mai-jev-int8-ml96`, whose `max_len=96`
+> cannot fit this checkpoint's 109/110-token question heads; that variant silently
+> dropped the ticket body and scored 0.187 on `route_team`. It is **not** a valid
+> measurement for this model and must not be quoted.
+>
+> With p50 at 84–100% of the 500 ms budget and p95 at 1.7–2.0× it, the restated
+> acceptance line ("three primitives combined p50 < 500 ms") is **met only
+> marginally and not robustly**, and it was measured on an desktop-class CPU — a real
+> target machine will be slower. The original line (single-primitive p50 < 50 ms)
+> is unreachable at this size on 4 CPU threads and is reserved for a future
+> ≤500 MB distilled tier.
 
 > **Hard constraint:** deploy with `batch=1` and exact-length inference. In
 > right-padded mixed batches the short `noul` rows return `NaN` on the fused ONNX

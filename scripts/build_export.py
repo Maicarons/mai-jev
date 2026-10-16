@@ -1,4 +1,4 @@
-"""把「一个量化后的 ONNX 图 + 一份标定」组装成一个自洽的发布目录（ticket #9）。
+r"""把「一个量化后的 ONNX 图 + 一份标定」组装成一个自洽的发布目录（ticket #9）。
 
     python scripts/build_export.py --fp32 <laya_fp32.onnx> --model-dir <checkpoint> ^
         --calibration <calibration.json> --out export\mai-jev-int8-ml96 ^
@@ -51,6 +51,17 @@ DEPLOY_REQUIRES = {"onnxruntime": ">=1.17", "tokenizers": ">=0.15", "numpy": ">=
 
 # 工单正文至少要留下这么多 token 才算可用输入（见 mai_jev.deploy.MIN_STATE_ROOM）。
 MIN_STATE_ROOM = 32
+
+# 随变体发布的口径声明。放在模块级是为了让「修正已发布变体的声明」这类维护动作
+# 能直接 import 这几个字符串，而不是手抄一份到别处再慢慢漂移。
+BATCH_NOTE = ("batch=1 且按真实长度推理。混合长度的右 padding batch 会让短的 "
+              "qtype=2 行返回 NaN（#8 报告 §1.5 实测 340/1029 行），未修复。")
+TEMPERATURE_NOTE = "温度随量化变体绑定，换变体必须重新标定；不要跨变体复用 calibration.json。"
+PARITY_NOTE = ("本目录的 calibration.json 是在本变体自己的图上、用它自己的 calib 切分重拟合的"
+               "（scripts/calibrate_export.py）。int8-gather 与 fp32 图几乎一致（max|dlogit| 0.105、"
+               "三原语 argmax 一致 1.000），因此重拟合出的温度与 torch 侧只差 ~1e-3 —— "
+               "那是测出来的巧合，不是可以省掉逐变体标定的理由：整图 int8（max|dlogit| 2.31）"
+               "不满足这条，会真退化，已弃用。")
 
 
 def deploy_head_lengths(model_dir: Path, head_max_len: int) -> Dict[str, int]:
@@ -174,12 +185,9 @@ def main() -> int:
         "threads_default": args.threads,
         "requires": DEPLOY_REQUIRES,
         "batch": 1,
-        "batch_note": "batch=1 且按真实长度推理。混合长度的右 padding batch 会让短的 "
-                      "qtype=2 行返回 NaN（ticket #8 报告 1.5），未修复。",
-        "temperature_note": "温度随量化变体绑定，换变体必须重新标定；不要跨变体复用 calibration.json。",
-        "parity_note": "本目录的 calibration.json 直接沿用 fp32 图拟合的温度。int8-gather 对 fp32 "
-                       "图的 max|dlogit| 为 0.105、三原语 argmax 一致 1.000，故温度不重拟合；"
-                       "整图 int8（max|dlogit| 2.31）不满足这条，已弃用。",
+        "batch_note": BATCH_NOTE,
+        "temperature_note": TEMPERATURE_NOTE,
+        "parity_note": PARITY_NOTE,
     }
     (out / "deploy_config.json").write_text(
         json.dumps(deploy_config, ensure_ascii=False, indent=2), encoding="utf-8")

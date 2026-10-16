@@ -33,7 +33,13 @@ from pathlib import Path
 # transformers 探测 TF 时可能死锁，官方建议。
 os.environ.setdefault("USE_TF", "0")
 
-DEFAULT_REPO = os.environ.get("MAI_JEV_REPO", "Maicarons/mai-jev-zh-support")
+# 两地的 owner 不同是实测事实（#5）：HF 账号是 Maicarons，而 ModelScope 认证后的
+# owner 是 Mai2026。默认值必须按 source 分开 —— 否则 `--source modelscope` 会去
+# Maicarons/... 找模型，然后拿到一个 404「record not found」，看起来像模型没发布。
+DEFAULT_HF_REPO = os.environ.get(
+    "MAI_JEV_HF_REPO", os.environ.get("MAI_JEV_REPO", "Maicarons/mai-jev-zh-support"))
+DEFAULT_MS_REPO = os.environ.get("MAI_JEV_MS_REPO", "Mai2026/mai-jev-zh-support")
+DEFAULT_REPO_BY_SOURCE = {"hf": DEFAULT_HF_REPO, "modelscope": DEFAULT_MS_REPO}
 DEFAULT_CACHE_ROOT = os.environ.get("MAI_JEV_CACHE_ROOT", r"$WORK")
 
 # 上游/本项目导出的 F16 权重实测 614 MB。给 5% 容差。
@@ -262,7 +268,9 @@ def check_onnx(snapshot: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="验证 mai-jev 已发布且可加载")
     ap.add_argument("--source", choices=["hf", "modelscope"], required=True)
-    ap.add_argument("--repo", default=DEFAULT_REPO, help="仓库 id（HF owner/name 或 魔搭 owner/name）")
+    ap.add_argument("--repo", default=None,
+                    help="仓库 id；不填则按 --source 取默认（HF: %s，ModelScope: %s）"
+                         % (DEFAULT_HF_REPO, DEFAULT_MS_REPO))
     ap.add_argument("--revision", default=None, help="版本；HF 默认 main，ModelScope 默认 master")
     ap.add_argument(
         "--cache-root",
@@ -272,10 +280,11 @@ def main() -> int:
     ap.add_argument("--skip-onnx", action="store_true", help="跳过 ONNX 检查")
     ap.add_argument("--skip-predict", action="store_true", help="只校验文件，不跑推理（无需 torch）")
     args = ap.parse_args()
+    repo = args.repo or DEFAULT_REPO_BY_SOURCE[args.source]
 
     cache_dir = cache_dir_for(args.source, Path(args.cache_root))
     try:
-        snapshot = download(args.source, args.repo, args.revision, cache_dir)
+        snapshot = download(args.source, repo, args.revision, cache_dir)
     except Exception as exc:  # 下载失败通常是 401/404/网络
         die(f"下载失败：{type(exc).__name__}: {exc}")
 
@@ -295,7 +304,7 @@ def main() -> int:
     except Exception as exc:
         die(f"校验失败：{type(exc).__name__}: {exc}", code=1)
 
-    log(f"OK: {args.source}:{args.repo} is published, loads and answers all three primitives.")
+    log(f"OK: {args.source}:{repo} is published, loads and answers all three primitives.")
     return 0
 
 

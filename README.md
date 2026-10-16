@@ -3,7 +3,7 @@
 > 基座：[`convaiinnovations/laya-multilingual`](https://huggingface.co/convaiinnovations/laya)（322M，mmBERT-base 编码器 + 决策头，Apache-2.0）
 > 训练：RLCD（Reinforcement Learning for Calibrated Decisions）+ 温度标定
 > 目标靶机：x86 CPU-only 老笔记本 / 中端手机 —— **常驻内存 ≤1GB、4 线程、三原语合计 p50 < 500ms**
-> 发布：ModelScope [`Mai2026/mai-jev-zh-support`](https://www.modelscope.cn/models/Mai2026/mai-jev-zh-support) 已上线（Hugging Face 待用户补齐 token，见 #5）
+> 发布：ModelScope [`Mai2026/mai-jev-zh-support`](https://www.modelscope.cn/models/Mai2026/mai-jev-zh-support) · Hugging Face [`Maicarons/mai-jev-zh-support`](https://huggingface.co/Maicarons/mai-jev-zh-support)
 
 ## 这是什么
 
@@ -44,48 +44,76 @@ python tools/smoke_laya.py
 
 ## 复现训练
 
+每一步的实测输出与踩坑记在 [docs/research/RUNS.md](docs/research/RUNS.md)；论文里的每个数字都能由这些脚本再生（`scripts/make_paper_tables.py` + `scripts/check_numbers.py`）。以 v0.3 为例：
+
 ```bash
+$env:PYTHONIOENCODING='utf-8'   # Windows 控制台必须，否则中文乱码
+
 # ① 数据：原始数据集 → 三原语 jsonl（train / calib / test）
-python scripts/build_dataset.py --out $WORK\data
+python scripts/build_dataset.py --raw <原始数据目录> --out $WORK\data --write
 
-# ② 阶段一：≤3k 样本 1 小时内跑通「数据 → RLCD → checkpoint」
-python scripts/train_rlcd.py --config runs/smoke/train_config.yaml
+# ② 紧急度重标 + 重平衡（#16）：规则证据分级器给 score 合成语义正确的标签
+python scripts/label_urgency.py  --in-dir $WORK\data --out-dir $WORK\data\adapted_v03
+python scripts/balance_urgency.py --in-dir $WORK\data\adapted_v03 \
+    --out $WORK\data\adapted_v03\mai_jev_train_balanced.laya.jsonl
 
-# ③ 阶段二：全量（约 3–5 万问题 × 4 epoch，单轮 ≤4 小时）
-python scripts/train_rlcd.py --config runs/v0.1/train_config.yaml
+# ③ RLCD 微调：run 结束会把超参 + 数据 sha256 + 显存峰值写进 runs/<id>/train_config.yaml
+python scripts/train_rlcd.py run \
+    --data $WORK\data\adapted_v03\mai_jev_train_balanced.laya.jsonl \
+    --eval-data $WORK\data\adapted_v03\mai_jev_test.laya.jsonl \
+    --out $WORK\runs\v03_rlcd_bal --base multilingual --loss rlcd \
+    --epochs 2 --micro-batch 8 --grad-accum 4 --seed 20261013
 
-# ④ 标定 + 评测：在 calib 留出集上拟合温度，报 ECE / 准确率 / soft accuracy
-python scripts/calibrate_and_eval.py --ckpt $WORK\ckpt\v0.1 --data $WORK\data
+# ④ 标定 + 评测：calib 上拟合温度，test 上报准确率 / ECE / 置信度三档
+python scripts/calibrate_eval.py --checkpoint $WORK\runs\v03_rlcd_bal \
+    --calib-data $WORK\data\adapted_v03\mai_jev_calib.laya.jsonl \
+    --test-data  $WORK\data\adapted_v03\mai_jev_test.laya.jsonl \
+    --baseline-checkpoint convaiinnovations/laya-multilingual \
+    --out $WORK\runs\v03_rlcd_bal
 
-# ⑤ 导出 + 靶机基准
-python scripts/export_onnx.py --ckpt $WORK\ckpt\v0.1 --out $WORK\export
-python tools/bench_target.py --model $WORK\export\v0.1-int8.onnx
+# ⑤ 导出 → 量化 → 组装发布目录（head 装不下 max_len 会直接报错退出，不是静默降级）
+python scripts/export_onnx.py --model-dir $WORK\runs\v03_rlcd_bal --out-dir $WORK\onnx
+python scripts/calibrate_export.py --model-dir <量化变体目录> --calib <calib jsonl> --write
+python scripts/build_export.py --model-dir $WORK\runs\v03_rlcd_bal --fp32 <fp32.onnx> \
+    --calibration <该变体 calibration.json> --out $WORK\export\v03-int8-ml256 \
+    --variant int8-gather --max-len 256
+
+# ⑥ 验收口径（与靶机验收线同一口径）：一条工单跑完三原语的 p50/p95 + 常驻内存
+python -m mai_jev.deploy --model-dir $WORK\export\v03-int8-ml256 ^
+    --input $WORK\export\bench_input.jsonl --threads 4 --repeats 150 --warmup 8
+
+# ⑦ 发布 + 发布后验收（发布需用户 token，见 #5）
+python scripts/publish_model.py --source modelscope --stage <staging 目录>
+python scripts/verify_published_model.py --source modelscope
 ```
 
-> 脚本状态：`scripts/build_dataset.py` 与 `scripts/train_rlcd.py` 已可用（数据 v0.2 = train 2,581 / calib 285 / test 343，见 [DATASETS.md](DATASETS.md)）；`scripts/calibrate_and_eval.py`（#6）与 `tools/bench_target.py`（#9）未落地，未落地前会明确说明。
+> **温度是「权重 × 推理后端」的联合属性**：换量化变体必须用 `scripts/calibrate_export.py` 在**该变体自己的 calib** 上重拟合，并把 `calibration.json` 与 `.onnx` 放在同一目录 —— 跨变体复用标定会让 ECE 悄悄退回未标定水平。
 
 ## 当前进度
 
 | 票 | 内容 | 状态 |
 | --- | --- | --- |
+| #1 | 地图：Destination / Notes / Decisions / Fog | 🗺️ map |
 | #2 | 训练环境（G 盘 venv + consumer GPU cu124 校验） | ✅ closed |
 | #3 | Laya 微调管线与 RLCD 实现拆解 | ✅ closed |
 | #4 | 训练数据来源与许可证盘点 | ✅ closed |
-| #7 | 构建三原语训练数据集 | ✅ closed（v0.2：3,209 行） |
-| #8 | 低端设备部署与量化路径 | 🚧 research 进行中 |
-| #11 | HF / ModelScope 发布流程与合规 | 🚧 research 进行中 |
-| #12 | RLCD 微调（先小样本后全量） | ⛔ 等 #7（已解锁） |
-| #6 | 温度标定与评测（ECE ≤0.10） | ⛔ 等 #12 |
-| #9 | 量化导出与靶机基准 | ⛔ 等 #6 #8 |
-| #5 | 发布到 HF 与 ModelScope（HITL：需用户 token） | ⛔ 等 #9 #11 |
+| #7 | 构建三原语训练数据集 | ✅ closed（v0.2 3,209 行） |
+| #12 | RLCD 微调（先小样本后全量） | ✅ closed（v0.2 全量轮） |
+| #6 | 温度标定与评测（ECE ≤0.10） | ✅ closed（v0.2：宏平均 0.7823，最差 ECE 0.0950） |
+| #16 | 补齐语义正确的紧急度标注并重训 score 原语 | ✅ closed（v0.3：宏平均 0.9106，最差 ECE 0.0871） |
+| #8 | 低端设备部署与量化路径 | ✅ closed（int8-gather 666MB / 常驻 796MB） |
+| #9 | 量化导出与靶机基准 | ✅ closed（发布变体 v03-int8-ml256；延迟口径改为三原语合计 p50<500ms） |
+| #11 | HF / ModelScope 发布流程与合规 | ✅ closed |
+| #15 | 撰写 arXiv 格式论文（数字全部可再生） | ✅ closed（`paper/`） |
 | #10 | 仓库基建：CONTEXT.md / ADR / README / DATASETS.md | ✅ closed |
+| #5 | 发布到 HF 与 ModelScope | ✅ closed（两地均上线，`verify_published_model.py` 双源通过） |
 
 ## 验收线
 
-- 准确率超过同规模基线（多数类基线 + 原版 `laya-multilingual`）
-- **ECE ≤ 0.10**（在 calib 留出集上温度标定后；出厂权重 ECE ≈ 0.466）
-- **中文场景优于原版 `laya-multilingual`**
-- 靶机：常驻内存 ≤1GB、单问题 p50 < 50ms
+- 准确率：held-out test（343 行，从未参与训练或标定）宏平均 **0.9106** = route_team 0.9475 / urgency 0.9329 / noul 0.8513。
+- **ECE ≤ 0.10**：每个变体在**自己的 calib 切分**上重拟合温度后，torch 最差 0.0871、int8 最差 0.0927。
+- **中文场景优于原版**：宏平均 0.4052（原版 `laya-multilingual` 零样本）→ 0.9106；规则基线 0.4373/0.5918/0.4111、多数类 0.3586/0.7026/0.6356。
+- 靶机：常驻内存 ≤1GB ✅（int8-gather 796MB）；延迟口径为「一条工单跑完三原语合计 **p50 < 500ms**」——训练机上端到端实测 **p50 421–499ms / p95 862–976ms**（n=150，两次复测）。**余量很小，且真实靶机只会更慢，复测前不作为稳定达标宣称**。原「单问题 p50 < 50ms」口径已由 #9 作废，保留给未来 ≤500MB 蒸馏档位。
 
 ## 环境要点（Windows / 双盘）
 

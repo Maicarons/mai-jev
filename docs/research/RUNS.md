@@ -102,3 +102,90 @@ checkpoint 落在 `$WORK\runs\smoke\`（`model.safetensors` 643MB，含 `checkpo
 - **≤4h / 30k 预算是真实风险**：文档实测 2×T4 要 4–6 小时，单卡 8GB 要 `--epochs 2 --grad-accum 4` 或 `--freeze-encoder`。
 - 许可证 Apache-2.0，无 NOTICE 文件，署名用 "Convai Innovations"。
 - 第三方基准数据要单独跟许可证走：`research/benchmarks/feishu_zh/LICENSE` 是 MIT / (c) 2026 Adkid-Zephyr。
+
+---
+
+## 2026-10-17 发布变体的延迟复测（复核 model card / #5 的 380ms）
+
+**目的**：核查对外发布页上「三原语合计 p50 = 380ms」的口径来源 —— 它和论文
+`paper/generated/numbers.tex` 里 `\LatPFiveZero{498.65}`（来源 `export/v03_bench_final.json`）
+相差 31%，必有一个是错的。
+
+**结论：380ms 出自一个已经作废的变体，不能用于发布变体。**
+
+- 380ms 的来源是 `export/bench_report.json` 的 `thread_scaling_int8_gather_max_len_96`
+  表（threads=4 → p50 378.69ms），那是 **`mai-jev-int8-ml96`**。该变体的 `max_len=96`
+  装不下 v03 的 question head（109/110 token），整条工单正文被丢弃 —— 同一目录下
+  `v03c.log`/`v03e.log` 实测 `route_team` 0.945 → **0.1826**。用它测延迟等于测一个
+  不读工单的模型。
+- 发布变体是 **`v03-int8-ml256`**（int8-gather，666.0MB），端到端复测（本机 desktop-class CPU，
+  4 线程，batch=1，精确长度，150 条真实工单，一条工单跑三原语）：
+
+  | 运行 | p50 | p95 | mean | 常驻 RSS | load |
+  | --- | --- | --- | --- | --- | --- |
+  | `v03_bench_final.json`（2026-10-13） | 498.65 | 975.58 | 583.81 | 795.4 | 3.87s |
+  | 本次复测（2026-10-17） | **420.93** | 862.24 | 530.17 | 796.2 | 3.85s |
+
+  复现命令（`--input`/`--repeats` 就是 `deploy.py` CLI 自己那段计时，口径与验收线同一处代码）：
+  `python -m mai_jev.deploy --model-dir $WORK\export\v03-int8-ml256
+   --input $WORK\export\bench_input.jsonl --threads 4 --repeats 150 --warmup 8`
+
+**两条要记住的**：
+
+1. 「三原语合计 p50 < 500ms」**只有 0–16% 余量且逐次运行漂移**（421 ↔ 499ms，同一台机、同一输入），
+   p95 是 1.7–2.0× 超线。对外只能报区间 + 「训练机上」这个限定，不能报单点、不能称稳定达标。
+2. 发布页（`docs/model-card.md`，即 ModelScope 的 README）当时报的「p50 380ms / 1029 条工单」
+   两头都不对：变体错（ml96）、样本数错（复测是 n=150；`bench_report.json` 的 workload 是
+   200 条 / repeats 40）。已在 2026-10-17 的提交里改成发布变体自己的数字并写明来源。
+
+---
+
+## 2026-10-17 两地发布完成 + 发布页数字更正（#5）
+
+**HF 那个「缺 token」的阻塞消失了，而且原因不明 —— 如实记下来。**
+
+- `.env` 里的 `hf-key`（`hf_y…`）**现在对 HF 有效**：`HfApi.whoami()` → `Maicarons`，
+  `auth.accessToken.displayName = kaggle`、`role = write`。
+- 但 2026-10-14 10:21 那次 `create_repo` 确实报了 401「Invalid username or password」，
+  而 `.env` 的 mtime 是 **2026-10-14 10:00:54**（之后未改动）—— 同一份凭证，一次失败一次成功，
+  **401 现在无法复现**。可能是一次性的服务侧/网络故障，不是凭证问题。结论：**不要**再把
+  「ModelScope token 当成 HF token」当成已证实的解释，那只是当时的猜测。
+- 发布后 HF 增量重传 13.4s、首传 179.6s（1.31 GB / 21 文件）。
+
+**发布路径进了仓库。** 以前上传靠工作目录里的两个一次性脚本（`publish_mai_jev.py` /
+`publish_ms.py`），它们不在版本库里 —— 也就是说「仓库自带可复现的发布」当时并不成立。
+现在 `scripts/publish_model.py`（`--source hf|modelscope|both`、`--dry-run`、按 source 取默认
+repo、token 只从进程环境或 `--env-file` 读且不回显）配合已有的
+`scripts/verify_published_model.py` 构成 组装→上传→验收 三步，彼此分开。
+顺手修了 `verify_published_model.py` 的一个真实缺陷：它的 `--repo` 默认值是 **HF 的 owner**，
+所以单独跑 `--source modelscope` 会去 `Maicarons/...` 找模型并拿到 404 —— 现在默认值按 source 分。
+
+**误传的非产物文件**：`.ms_upload_cache`（ModelScope 上传器的缓存）被推到了 HF，发布页上多出
+一个和模型无关的文件。已加 `IGNORE_PATTERNS` / `STRAY_PATTERNS`，HF 侧显式 `delete_file` 删掉、
+MS 侧用 `delete_files(delete_patterns=...)` 清掉 —— 两地现在都是**恰好 21 个文件**。
+
+**更正了两处「数字来自已作废变体」的发布页事实错误（这才是本次最要紧的事）：**
+
+1. **int8 精度行** 原为 0.9096 / 0.4606 / 0.8397 —— 那是**整图 int8**（max|dlogit| 2.31，
+   #8/#9 已弃用）在 v0.2 数据上的数。发布变体 `int8-gather` 在 v0.3 test 上是
+   0.9475 / 0.9359 / 0.8484，量化退化 ≤0.0029。已改。
+2. **延迟** 原为「p50 380ms / 1029 条工单」—— 见上一节，出自作废变体 ml96，且样本数也不对。
+   改为发布变体自己的端到端区间 p50 421–499ms / p95 862–976ms + 「训练机上」限定。
+
+产物侧同步：staging 的 `README.md`（= `docs/model-card.md`）与 `onnx/deploy_config.json` 的
+`parity_note`（原文说「不重拟合温度」，与同目录 `calibration.json` 里 int8 refit 的实际值矛盾）
+已更正，`MANIFEST.json` 里该文件的 sha256 同步重算（`model.onnx` 的 sha256 **未变**，图的字节
+没动），两地重传。`deploy_config.json` 的三条口径声明已提升为 `build_export.py` 的模块级常量，
+以后修正发布声明直接 import，不靠手抄。
+
+**验收（`scripts/verify_published_model.py`，两地 exit 0）**
+
+| 源 | repo | 文件 | 校验 |
+| --- | --- | --- | --- |
+| HF | `Maicarons/mai-jev-zh-support` | 21 / 1.31 GB | safetensors 614.0MB / 170 × F16；`laya.load` 成功；三原语合法；ONNX session 输入五项 |
+| ModelScope | `Mai2026/mai-jev-zh-support` | 21 / 1.31 GB | 同上 |
+
+⇒ **发布这步完成了**（#5 可闭）。但挂在上面的延迟问题没有随之解决：Destination 的
+「三原语合计 p50 < 500ms」在发布变体上只有 0–16% 余量、p95 是 1.7–2.0× 超线，且**只在训练机
+上测过**。真实靶机复测之前，这条验收线只能报区间 + 限定，不能报达标。
+
