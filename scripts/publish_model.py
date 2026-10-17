@@ -41,7 +41,7 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_STAGE = os.environ.get("MAI_JEV_STAGE", r"$WORK\export\publish")
+DEFAULT_STAGE = os.environ.get("MAI_JEV_STAGE", "export/publish")
 DEFAULT_HF_REPO = os.environ.get("MAI_JEV_HF_REPO", "Maicarons/mai-jev-zh-support")
 DEFAULT_MS_REPO = os.environ.get("MAI_JEV_MS_REPO", "Mai2026/mai-jev-zh-support")
 DEFAULT_MS_NAME = "mai-jev 中文客服工单决策模型"

@@ -31,16 +31,19 @@ Outputs:
 """
 import argparse
 import os
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 
 from laya.common import build_model
 
-LAYA_CKPT_DEFAULT = (
-    r"$HF_HUB\models--convaiinnovations--laya-multilingual"
-    r"\snapshots\1720e3e3357cfe1e281542e223f8273b0890ca34"
-)
+# 基座检查点默认取本机标准 HF 缓存里的快照；盘符不进仓库，可用 --ckpt 覆盖。
+_HF_HUB = os.environ.get(
+    "HF_HUB_CACHE", str(Path.home() / ".cache" / "huggingface" / "hub"))
+LAYA_CKPT_DEFAULT = str(
+    Path(_HF_HUB) / "models--convaiinnovations--laya-multilingual"
+    / "snapshots" / "1720e3e3357cfe1e281542e223f8273b0890ca34")
 
 
 class ExportWrapper(torch.nn.Module):
@@ -92,7 +95,7 @@ class ExportWrapper(torch.nn.Module):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-dir", default=LAYA_CKPT_DEFAULT)
-    ap.add_argument("--out-dir", default=r"$WORK\onnx")
+    ap.add_argument("--out-dir", default="onnx")
     ap.add_argument("--seq-len", type=int, default=256)
     ap.add_argument("--marker-rows", type=int, default=8)
     args = ap.parse_args()

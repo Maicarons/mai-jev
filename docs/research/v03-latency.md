@@ -1,4 +1,4 @@
-# v03 int8 靶机延迟构成（threads=4，Windows，desktop-class CPU）
+# v03 int8 靶机延迟构成（threads=4，Windows，本机 CPU）
 
 口径：`$WORK\export\v03-int8-ml256`（int8-gather，666.0 MB），
 `Predictor(session.run)` 单次前向耗时，batch=1，精确长度，40 条 test 工单取 p50。

@@ -1,4 +1,4 @@
-# mai-jev 训练环境锁定（Windows / G 盘）
+# mai-jev 训练环境锁定（Windows / 仓库外工作区）
 # 复现方式：
 #   uv venv --python 3.12 $WORK\venv
 #   uv pip install --python python -r requirements.txt \

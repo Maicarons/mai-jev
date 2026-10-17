@@ -178,7 +178,7 @@ primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
 >
 > With p50 at 84–100% of the 500 ms budget and p95 at 1.7–2.0× it, the restated
 > acceptance line ("three primitives combined p50 < 500 ms") is **met only
-> marginally and not robustly**, and it was measured on an desktop-class CPU — a real
+> marginally and not robustly**, and it was measured on a desktop-class CPU — a real
 > target machine will be slower. The original line (single-primitive p50 < 50 ms)
 > is unreachable at this size on 4 CPU threads and is reserved for a future
 > ≤500 MB distilled tier.
@@ -224,7 +224,7 @@ primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
   distribution without acquiring the boundary cases that define it. Until those rows
   are trained on, or a human-audited `noul` set exists, treat this primitive as
   **review-only**. Reproduce: `scripts/eval_noul_antibody.py`.
-- **Latency was measured on an desktop-class CPU**; a real old laptop will be slower.
+- **Latency was measured on a desktop-class CPU**; a real old laptop will be slower.
   Re-measure on the actual target before relying on the p50 figures.
 - **`zh-decision-bench` was used for evaluation only** and the model was never
   trained on it.

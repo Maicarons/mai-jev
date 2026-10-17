@@ -14,8 +14,8 @@
 --------
 * `huggingface_hub` / `modelscope` / `onnxruntime` / `laya` 全部**惰性 import**。
   缺包时打印明确的安装提示并以非零码退出——**绝不自动安装任何东西**。
-下载缓存强制落本地盘（`--cache-root` 默认 $WORK）：系统盘空间紧张，
-  一个 1GB 权重落 C 盘两次就会出事。
+下载缓存可以用 `--cache-root` 指到大盘（默认落用户目录 `~/.cache/mai-jev`）：
+  一个 1GB 的权重重复下载很占地方。
 * 只断言**结构合法性**（文件齐全、体积匹配、非 NaN、概率在 [0,1]、
   choice 落在候选集内），不断言数值质量——质量口径在 docs/research 下的评测里。
 
@@ -40,7 +40,8 @@ DEFAULT_HF_REPO = os.environ.get(
     "MAI_JEV_HF_REPO", os.environ.get("MAI_JEV_REPO", "Maicarons/mai-jev-zh-support"))
 DEFAULT_MS_REPO = os.environ.get("MAI_JEV_MS_REPO", "Mai2026/mai-jev-zh-support")
 DEFAULT_REPO_BY_SOURCE = {"hf": DEFAULT_HF_REPO, "modelscope": DEFAULT_MS_REPO}
-DEFAULT_CACHE_ROOT = os.environ.get("MAI_JEV_CACHE_ROOT", r"$WORK")
+DEFAULT_CACHE_ROOT = os.environ.get(
+    "MAI_JEV_CACHE_ROOT", str(Path.home() / ".cache" / "mai-jev"))
 
 # 上游/本项目导出的 F16 权重实测 614 MB。给 5% 容差。
 EXPECTED_SAFETENSORS_MB = 614.0

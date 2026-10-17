@@ -20,8 +20,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+from pathlib import Path
 
 import laya
 
@@ -90,9 +92,11 @@ def main() -> None:
     results["agent_api"] = out
     print(json.dumps(out.get("answers", out), ensure_ascii=False, indent=2, default=str))
 
-    with open(r"$WORK\logs\smoke_laya.json", "w", encoding="utf-8") as fh:
+    out_path = Path(os.environ.get("MAI_JEV_LOG_DIR", "logs")) / "smoke_laya.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(results, fh, ensure_ascii=False, indent=2, default=str)
-    print("wrote $WORK\\logs\\smoke_laya.json")
+    print(f"wrote {out_path}")
 
 
 if __name__ == "__main__":

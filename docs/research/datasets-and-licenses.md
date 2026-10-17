@@ -3,7 +3,7 @@
 调研日期：2026-10-12
 目标：为 mai-jev（`convaiinnovations/laya-multilingual` 的中文 System One 微调）训练三个原语：
 `choice`（5 团队：售后 / 退款处理 / 技术支持 / 账务 / 投诉升级）、`score`（紧急度 1–5 有序）、`noul`（客户是否要求退款或升级）。
-预算：3–5 万条 × 4 epochs，单次实验 ≤4h；CPU-only；数据落在 `$WORK`（工作区空间充足）。
+预算：3–5 万条 × 4 epochs，单次实验 ≤4h；CPU-only；数据落在 `$WORK`（仓库外的磁盘）。
 许可约束：必须可再分发（Apache-2.0 模型发布到 HF + ModelScope），**排除 NC / 仅研究 / 非商用**。
 **不使用 Jev API 打标**（ToS 风险 + 大陆不可用）；可用本地/开源 teacher 模型（Qwen / GLM / InternLM）合成。
 
@@ -56,7 +56,7 @@
   - `score`：dialogue-support-score（200 行，0–3 复杂度）+ software-*-severity（2,000 行）+ threshold-sla（50 行）→ 需把 0–3 映射/扩展到 1–5。
   - `noul`：info_complete / turns_known 等布尔问（大量，但语义是"信息是否充分"，**不是**"是否要求退款/升级"）→ 语义不匹配，只能作为 `noul` 的**格式与否定逻辑**监督，不能直接充当业务标签。
 - **致命局限（重要）**：文本是**模板化短句合成中文**（如「用户发现同一订单被重复扣款。」），`state` 常为结构化 dict（字段名+值），不是自然客户口语。它教的是**决策格式与推理模式**，不教自然工单语言。自然性必须由 zh-tw 集或 teacher 合成补足。
-- **存储**：json，实测 **104 文件 / 100,000 行 / 103,904,802 B（99.1 MiB）**，空间无压力（工作区空间充足）。本地已全量落盘在 `$WORK\data\raw\mri\`。
+- **存储**：json，实测 **104 文件 / 100,000 行 / 103,904,802 B（99.1 MiB）**。本地已全量落盘在 `$WORK\data\raw\mri\`。
 
 ### 1.2 albertkingdom/custom-service-ticket-zh-tw ⭐ 自然工单文本来源
 
@@ -120,7 +120,7 @@
 - **License**：`apache-2.0`（README metadata + License 节：BAAI 创作部分 Apache-2.0，另含 MIT 的 Unnatural Instructions 与 CC-BY-SA-4.0 的 leetcode 子集）——已核实。
 - **内容**：translated 66,858 / exam 63,532 / human-value 34,471 / counterfactural-chat 13,653 / leetcode 11,737，共 5 个子集，338MB。
 - **映射到三原语**：**无直接映射**（没有工单文本、没有类别/紧急度标签）。可作为中文通用语言能力的补充预训练/正则化数据，或作为 teacher 合成时的风格参考。
-- **局限**：338MB（可以承受但没必要全下）；与工单域相距远。
+- **局限**：338MB（可承受但没必要全下）；与工单域相距远。
 
 ### 1.7 其他已排除 / 未核实的候选
 

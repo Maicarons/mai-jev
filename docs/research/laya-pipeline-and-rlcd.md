@@ -21,7 +21,7 @@
 11. **选项数 >20 会明显掉准确率**（laya issue #394），我们 5 类 choice 完全安全。
 12. ONNX 导出脚本 `scripts/export_onnx.py` **不在 pip 包里**（`pyproject.toml:37` packages 不含 scripts），要从 GitHub 树取。INT8 是 weight-only `quantize_dynamic`，`per_channel` 默认关（#790 会塌）。
 13. Windows 无额外训练坑；`laya-train` 支持 CUDA/MPS/CPU（`docs/finetune.md:23`）。唯一 Windows 坑是 stdout 编码，`laya/cli.py:398-402` 要求 `sys.stdout.reconfigure(encoding="utf-8")`。
-14. 6 GB 显存（consumer GPU）够跑默认配置：文档里 16 GB 卡的配方是 fp16 autocast + gradient checkpointing，默认 `amp` 在 CUDA 上自动开、`gradient_checkpointing` 跟随 `amp`（`laya/train.py:86`）。
+14. 本机 8 GB 显存够跑默认配置：文档里 16 GB 卡的配方是 fp16 autocast + gradient checkpointing，默认 `amp` 在 CUDA 上自动开、`gradient_checkpointing` 跟随 `amp`（`laya/train.py:86`）。
 15. 每次 epoch 后重写 `checkpoint_latest/`，崩溃最多损失一个 epoch（`docs/finetune.md:345`）。
 
 ## 1. 训练入口与完整 CLI

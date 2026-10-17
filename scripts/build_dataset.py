@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import sys
@@ -490,10 +491,14 @@ def adapt_zhbench(raw: Path) -> tuple[list[dict], Counter]:
 # --------------------------------------------------------------------------
 # token 长度统计（用 laya-multilingual 的 tokenizer，本地缓存）
 # --------------------------------------------------------------------------
-TOKENIZER_SNAPSHOT = (
-    r"$HF_HUB\models--convaiinnovations--laya-multilingual"
-    r"\snapshots\1720e3e3357cfe1e281542e223f8273b0890ca34"
-)
+# 基座快照（只用它的 tokenizer 统计 token 长度）。盘符不进仓库：默认按标准 HF 缓存
+# 布局拼，或用 $MAI_JEV_TOKENIZER_SNAPSHOT 直接指到快照目录。
+_HF_HUB = os.environ.get(
+    "HF_HUB_CACHE", str(Path.home() / ".cache" / "huggingface" / "hub"))
+TOKENIZER_SNAPSHOT = os.environ.get(
+    "MAI_JEV_TOKENIZER_SNAPSHOT",
+    str(Path(_HF_HUB) / "models--convaiinnovations--laya-multilingual"
+        / "snapshots" / "1720e3e3357cfe1e281542e223f8273b0890ca34"))
 
 
 def token_lengths(states: list[str]) -> dict:

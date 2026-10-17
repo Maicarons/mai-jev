@@ -106,7 +106,7 @@ python scripts/verify_published_model.py --source modelscope
 | 票 | 内容 | 状态 |
 | --- | --- | --- |
 | #1 | 地图：Destination / Notes / Decisions / Fog | 🗺️ map |
-| #2 | 训练环境（G 盘 venv + consumer GPU cu124 校验） | ✅ closed |
+| #2 | 训练环境（工作区 venv + cu124 校验） | ✅ closed |
 | #3 | Laya 微调管线与 RLCD 实现拆解 | ✅ closed |
 | #4 | 训练数据来源与许可证盘点 | ✅ closed |
 | #7 | 构建三原语训练数据集 | ✅ closed（v0.2 3,209 行） |
@@ -138,13 +138,14 @@ python scripts/verify_published_model.py --source modelscope
 - **中文场景优于原版**：宏平均 0.4052（原版 `laya-multilingual` 零样本）→ 0.9106；规则基线 0.4373/0.5918/0.4111、多数类 0.3586/0.7026/0.6356（同为 v0.3 标签口径；重标后 noul 的规则基线变成 0.8484 / 均衡 0.6711、多数类 0.796）。
 - 靶机：常驻内存 ≤1GB ✅（int8-gather 796MB）；延迟口径为「一条工单跑完三原语合计 **p50 < 500ms**」——训练机上端到端实测 **p50 421–499ms / p95 862–976ms**（n=150，两次复测）。**余量很小，且真实靶机只会更慢，复测前不作为稳定达标宣称**。原「单问题 p50 < 50ms」口径已由 #9 作废，保留给未来 ≤500MB 蒸馏档位。
 
-## 环境要点（Windows / 双盘）
+## 环境要点（Windows）
 
 - Python 用 uv 的 **3.12.12**（系统默认 3.14 不用；Laya 要求 ≥3.10）。
 - torch 必须用 `https://download.pytorch.org/whl/cu124` 装 **2.6.0+cu124**；默认 PyPI 的 `torch==2.14.1` 是 `+cpu` 构建，装上会报 `OSError: [WinError 127] ... torch_cuda.dll`。
-- **系统盘空间紧张**：venv、数据、checkpoint、导出全部在 `$WORK\`；仓库只放代码与文档。
+- **工作区与仓库分离**：venv、数据、checkpoint、导出产物都放工作区；仓库里只放代码与文档。
+  下文把工作区根记作 `$WORK`，仓库根就是本仓库所在目录。
 - 已知告警（原厂 multilingual 检查点自带温度超界，置信度视为未标定）：`laya: this checkpoint ships invalid temperatures or values outside [0.5, 5]; using choice:11+=0.1006 -> 0.5`。
-- GPU 上零样本单问题延迟 22.7–24.5ms（consumer GPU）；靶机 CPU 数字见 #9。
+- GPU 上零样本单问题延迟 22.7–24.5ms（本机 GPU）；靶机 CPU 数字见 #9。
 
 ## 许可证与致谢
 

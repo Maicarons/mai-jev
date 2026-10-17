@@ -10,6 +10,7 @@ ModernBERT sliding-window attention 与 padding 的交互。这里直接测三�
 不修改 deploy.py，纯探针。
 """
 import json
+import os
 import statistics
 import sys
 import time
@@ -17,17 +18,19 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, r".")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mai_jev.deploy import QTYPE, Predictor  # noqa: E402
 
-EXPORT = sys.argv[1] if len(sys.argv) > 1 else r"$WORK\export\v03-int8-ml256"
+EXPORT = (sys.argv[1] if len(sys.argv) > 1
+          else os.environ.get("MAI_JEV_EXPORT_DIR", "export/v03-int8-ml256"))
 N = int(sys.argv[2]) if len(sys.argv) > 2 else 60
 THREADS = int(sys.argv[3]) if len(sys.argv) > 3 else 4
 
 p = Predictor(EXPORT, threads=THREADS)
 qids = list(p.questions)
 rows = [json.loads(l) for l in
-        open(r"$WORK\data\adapted\mai_jev_test.jsonl", encoding="utf-8")][:N]
+        open(os.environ.get("MAI_JEV_TEST_JSONL",
+                            "data/adapted/mai_jev_test.jsonl"), encoding="utf-8")][:N]
 
 
 def batch_feed(text):

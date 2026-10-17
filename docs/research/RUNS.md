@@ -11,13 +11,13 @@
 ### 环境
 
 - venv：`$WORK\venv`（Python 3.12.12）
-- GPU：consumer GPU (8GB VRAM)，torch 2.6.0+cu124
+- GPU：单张 8GB 显存的消费级 GPU，torch 2.6.0+cu124
 - 数据：`$WORK\data\`（`v0.1_*`，300 条合成冒烟工单）
 
 ### 踩坑（3 个，都已修）
 
-1. `prepare_smoke.py` 里 venv 路径写错：`REPO.parent / "mai-jev-work"` 解析成 `$WORK\...` 之外的东西。
-   改成 `Path("$WORK") / "venv" / "Scripts" / "python.exe"`。
+1. `prepare_smoke.py` 里 venv 路径写错：写死的工作区路径与实际工作区不一致，解析到仓库外。
+   改成从 `$MAI_JEV_WORK` 取工作区根（不设就按「仓库同级目录 `mai-jev-work`」猜）。
 2. `subprocess.run(["laya-train", ...])` → `FileNotFoundError [WinError 2]`：venv 的
    `Scripts\laya-train.exe` 不在 PATH。
 3. `python -m laya train` → `No module named laya.__main__`：laya 包没有 `__main__.py`。
@@ -118,7 +118,7 @@ checkpoint 落在 `$WORK\runs\smoke\`（`model.safetensors` 643MB，含 `checkpo
   装不下 v03 的 question head（109/110 token），整条工单正文被丢弃 —— 同一目录下
   `v03c.log`/`v03e.log` 实测 `route_team` 0.945 → **0.1826**。用它测延迟等于测一个
   不读工单的模型。
-- 发布变体是 **`v03-int8-ml256`**（int8-gather，666.0MB），端到端复测（本机 desktop-class CPU，
+- 发布变体是 **`v03-int8-ml256`**（int8-gather，666.0MB），端到端复测（本机 CPU，
   4 线程，batch=1，精确长度，150 条真实工单，一条工单跑三原语）：
 
   | 运行 | p50 | p95 | mean | 常驻 RSS | load |
@@ -144,7 +144,7 @@ checkpoint 落在 `$WORK\runs\smoke\`（`model.safetensors` 643MB，含 `checkpo
 
 **HF 那个「缺 token」的阻塞消失了，而且原因不明 —— 如实记下来。**
 
-- `.env` 里的 `hf-key`（`hf_y…`）**现在对 HF 有效**：`HfApi.whoami()` → `Maicarons`，
+- `.env` 里的 `hf-key`（`hf_…`）**现在对 HF 有效**：`HfApi.whoami()` → `Maicarons`，
   `auth.accessToken.displayName = kaggle`、`role = write`。
 - 但 2026-10-14 10:21 那次 `create_repo` 确实报了 401「Invalid username or password」，
   而 `.env` 的 mtime 是 **2026-10-14 10:00:54**（之后未改动）—— 同一份凭证，一次失败一次成功，
@@ -347,9 +347,9 @@ v0.4 只是把噪声落在了线的另一侧 0.006。我们**没有**按 test EC
 
 ### 环境坑：GPU 争用（两次失败的真正原因）
 
-- 第一次训练直接 `CUDA error: out of memory`：8 GB 显存里 **7 GB 被同机 ComfyUI 占着**。
+- 第一次训练直接 `CUDA error: out of memory`：8 GB 显存里 **7 GB 被本机另一个生成任务占着**。
 - 释放后跑到 step 200 又 `CUDA error: unspecified launch failure` —— 用户当时正在跑 1024×1024 生成任务。
-- 用 ComfyUI 自己的 `POST /free`（`{"unload_models":true,"free_memory":true}`，
+- 用那个程序自己的 `POST /free` 接口（`{"unload_models":true,"free_memory":true}`，
   可逆）把占用降到 **180 MiB** 后，训练与导出全部正常。
 - ⇒ **动手训练/导出前先看 `nvidia-smi`**：显存占用 > 2.5 GB 就先谈，不要硬跑。
 
@@ -359,11 +359,11 @@ v0.4 只是把噪声落在了线的另一侧 0.006。我们**没有**按 test EC
   且与 v0.3 的导出**字节数完全相同** ⇒ 图结构与参数规模一致，只有 `noul` 头权重变了。
 - `build_export.py` 失败在 onnxruntime 的 `load_model_with_shape_infer` →
   `onnx.shape_inference.infer_shapes_path`：在 1.2 GB 的图上做形状推理要数 GB 空闲内存，
-  而当时本机**空闲物理内存只剩几个 GB、commit 已接近上限**，它报
+  而当时本机**空闲物理内存只剩几个 GB、commit 已接近它的上限**，它报
   `MemoryError: bad allocation`，写出半截模型，紧接着 `get_opset_version` 报
   `Failed to find proper ai.onnx domain`。**那不是 opset 版本问题**（单独跑 `infer_shapes_path`
   在内存充足时 opset_import 是正常的 `[('', 17)]`），是内存不足的次生症状。
-- 当时的机器状态：ComfyUI 的 python + 一批 `blender-mcp` 进程（另一件活儿）把 commit 占满，
+- 当时的机器状态：本机同时跑着一批吃内存的进程把 commit 占满，
   PowerShell 自己都起不来（`800705af` = ERROR_COMMITMENT_LIMIT）。
 - ⇒ **动手训练 / 导出 / 评测前先看 `FreePhysicalMemory`，低于 ~6 GB 就先谈**，不要硬跑。
 - 因此论文的打包 / 量化 / 延迟数字**仍标注为 v0.3 包**（论文 §5.2 加了 Version note 说明

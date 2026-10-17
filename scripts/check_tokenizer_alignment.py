@@ -19,9 +19,14 @@ two agree token-for-token on a Chinese/English/mixed corpus.
 """
 import json
 import os
+from pathlib import Path
 
-BASE = (r"$HF_HUB\models--convaiinnovations--laya-multilingual"
-        r"\snapshots\1720e3e3357cfe1e281542e223f8273b0890ca34")
+# 本机标准 HF 缓存里的基座快照；盘符不进仓库。
+_HF_HUB = os.environ.get(
+    "HF_HUB_CACHE", str(Path.home() / ".cache" / "huggingface" / "hub"))
+BASE = str(
+    Path(_HF_HUB) / "models--convaiinnovations--laya-multilingual"
+    / "snapshots" / "1720e3e3357cfe1e281542e223f8273b0890ca34")
 
 TEXTS = [
     "我们要不要把这个功能推迟到下个季度？",

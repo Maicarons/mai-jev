@@ -484,7 +484,7 @@ optimum          MISSING
 
 - `--source hf|modelscope` 切换下载通道；
 - `huggingface_hub` 与 `modelscope` **惰性 import**，缺包时给出明确的 `pip install` 提示并以非零码退出，**不自动安装**；
-- 强制缓存到 `$WORK\hf-cache` / `$WORK\ms-cache`（系统盘空间紧张）；
+- 强制缓存到 `$WORK\hf-cache` / `$WORK\ms-cache`（不占系统盘）；
 - 打印三个原语的中文样例输出；
 - 退出码 0 = 全过；非 0 = 失败，附带断言原因。
 

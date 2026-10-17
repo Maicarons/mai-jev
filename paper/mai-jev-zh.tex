@@ -1,0 +1,405 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------------------
+% mai-jev 论文（中文版）。与英文版 paper/mai-jev.tex 一一对应。
+%
+% 硬约束（map #1）：**正文里不出现任何一个手写的小数**。两版论文共用同一批宏 ——
+% `generated/numbers.tex` 以及图/表由 `scripts/make_paper_tables.py` 从实验 JSON
+% 产物生成；中文标签的 `*_zh.tex` 是同一次运行产出的，数字与英文版逐位相同。
+% 若宏没生成，`\input` 会让编译失败，而不是印一个过期数字。
+% ---------------------------------------------------------------------------
+
+% 正文里有中文，且团队名（售后 / 退款处理 …）与紧急度档位名（完全不紧急 ～ 非常紧急）
+% 是 mai_jev/questions.py 里 criteria 的原文，必须与训练时逐字一致，不能音译。
+% 所以走 xelatex + ctex：pdflatex 遇到中文字符会直接报
+% "Unicode character not set up for use with LaTeX"。编译命令要写 -xelatex。
+\usepackage[UTF8, fontset=windows]{ctex}
+\usepackage{geometry}
+\geometry{a4paper,margin=2.6cm}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{pgfplots}
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+% 中文正文里嵌的路径/宏名（`scripts/make_paper_tables.py` 之类）在 `_` `.` `/` 之后没有断行点，
+% 一条长标识符塞不进剩余行宽时会整行顶出右边距（实测最严重处溢出 212pt）。这些地方一律用
+% `\path{}`：等宽外观与 \texttt 相同，但在这些分隔符之后允许断行。
+\usepackage{url}
+
+% 中文段落里嵌着长标识符时，默认容差下 TeX 宁可选一个把行顶出右边距的断法，也不选一个很松的断法；
+% 放宽容差并留一点额外伸缩，让它去断行。
+\tolerance=3000
+\emergencystretch=0.5em
+
+\pgfplotsset{compat=1.18}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+\input{generated/numbers.tex}
+
+\newcommand{\ie}{\emph{i.e.}}
+
+\title{\textbf{mai-jev}：面向中文客服工单分诊的\\校准量化 322M 决策模型}
+\author{Maicarons Mai-jev 贡献者}
+\date{}
+
+\begin{document}
+\maketitle
+
+本文是英文版 \path{paper/mai-jev.tex} 的中文版：章节结构、全部数字与保留意见与英文版一一对应，
+两版共用同一批由 \path{scripts/make_paper_tables.py} 生成的宏与图表（\path{paper/generated/}），
+因此不存在「中英两版数字打架」的可能。正文中的代码标识符（\texttt{choice}/\texttt{score}/\texttt{noul}、
+\path{route_team}/\texttt{urgency}/\path{needs_refund_or_escalation}）保持原文，它们是训练与推理路径里
+逐字使用的名字。
+
+\begin{abstract}
+我们提出 \textbf{mai-jev}：一个中文优先的 System~One 决策模型，用于客服工单分诊。它在一次前向传播中同时回答三个决策原语 ——
+工单该由哪个团队接手（\texttt{choice}）、有多紧急（\texttt{score}）、以及客户是否在要求退款、赔付或升级处理（\texttt{noul}）。
+我们从 Laya 的 322M 多语言 checkpoint 出发，在 \DataTotalRows{} 条经过审计的中文样本上做 RLCD 微调，
+在不与训练重叠的切分上做温度标定，得到最差单原语期望校准误差 \WorstEce{} —— 略高于我们 \num{0.10} 的目标线，
+我们如实报为未达标，而不是把它调掉 —— 并交付一个单图 int8-gather ONNX 包（\ModelMb\,MB）：
+在一张工单上回答全部三个原语，四个 CPU 线程上 p50 延迟 \LatPFiveZero\,ms，常驻内存 \RssMb\,MB。
+
+两条结论是负面的，而我们认为它们比头条数字更可复用。第一，代理标签是主要误差来源，而且我们踩了两次同一个坑。
+早期 checkpoint 在 urgency 上只拿到 \AccScoreVZeroTwo{}，纯粹是因为公开代理标签标注的是\emph{情绪强度}而不是工单紧急度；
+把标签换成证据分级的结果之后，同一个原语升到 \AccScore{}（即 \DeltaUrg{} 的摆幅），而架构与训练预算一分没动。
+二值原语以同样的方式失灵：它的代理标签问的是「是否需要人工介入」，而不是客户是否在\emph{提要求}，
+据它训练出来的头在订正后的问题上只有 \OldHeadAccNoul{} —— 低于恒答基线的 \MajAccNoul{} —— 而同一套权重在代理问题上看起来很强。
+用规则重标并重训后，该原语达到 \AccNoul{}（均衡准确率 \BAccNoul{}），关键词规则基线为 \RulesBAccNoul{}。
+但我们并不声称概念被修好了：在 \AntibodyN{} 条把词面与含义刻意拉开的自写样本上，这个头的均衡准确率是 \AntibodyBAcc{} ——
+低于恒答预测器的 \num{0.5}。重标修好的是标签，只部分修好了模型学到的东西。
+第二，\emph{温度是权重与推理后端的联合属性}：完全相同的拟合流程在训练图上给出 \TChoice{}、\TScore{}、\TNoul{}，
+在量化图上给出 \TChoiceOnnx{}、\TScoreOnnx{}、\TNoulOnnx{}，所以我们把标定当作必须与模型一起发布的、逐变体的产物。
+本文的每一个数字都经由脚本生成的表格给出，以便审稿人从仓库复现。
+\end{abstract}
+
+\section{引言}
+
+工单分诊是一个高频、低容错的决策问题。一个客服队列必须对每一张进来的工单决定三件事：由谁处理（\texttt{choice}，五个团队选一）、
+多快处理（\texttt{score}，五个紧急度档位）、以及这张工单是否带着退款或升级的风险（\texttt{noul}）。
+判错的代价在两侧都高：把退款投诉路由到硬件团队会浪费一个稀缺的人力小时，而漏掉一个明确的升级诉求则是服务等级的失守。
+
+近期工作表明，单个编码器可以在一次前向传播里回答多个结构化决策原语、且不生成任何 token，
+这类决策头可以用一个比较「各选项对数概率」而不是「生成文本概率」的强化学习目标来训练~\cite{laya}。
+我们称这一族模型为 System~One 决策模型。它在这里有吸引力，是因为它把自回归生成换成了有界的分类式计算：
+延迟可预测、输出空间封闭、并且可以标定。
+
+本文是一篇关于 \textbf{mai-jev} 的工程与评测报告 —— 一个属于该族、以 Apache-2.0 发布的中文优先模型，
+端到端地做完并交付了：数据审计、微调、温度标定、量化导出、CPU 延迟基准、以及复现脚本。
+这个系统是刻意为低端部署目标定尺的 —— 一台没有 GPU 的 x86 笔记本、四个线程、常驻内存不超过 \SI{1}{\giga\byte} ——
+这把模型限制在几亿参数，也否决了每一条「蒸馏到教师模型」的路线。
+
+本文的贡献有三项。
+
+\begin{enumerate}
+  \item \textbf{一个可用的中文 System~One 分诊模型。} 一份 \DataTotalRows{} 行、来源经审计的中文为主数据集；
+  在 322M 多语言基座上的一次 RLCD 微调；以及三原语宏平均准确率 \MacroAcc{}（未微调的基座为 \OrigAccMacro{}，
+  关键词规则系统为 \RulesAccChoice{}、\RulesAccScore{}、\RulesAccNoul{}），温度标定后最差单原语 ECE 为 \WorstEce{} ——
+  高于我们 \num{0.10} 的目标线，如实报为未达标。对多数类被重标翻转的二值原语，我们改看均衡准确率：
+  \BAccNoul{}，对照关键词规则的 \RulesBAccNoul{} 与恒答预测器的 \MajAccNoul{}。
+  \item \textbf{一份「代理标签损害」的量化账，而且踩了两次。} 我们说明：某个原语上语义错误的标签让它只拿到 \AccScoreVZeroTwo{}、
+  多训 epoch 也救不回来（对照修好标签后的 \AccScore{}），而一个不调用任何外部 API 的规则证据标注器就能把它修好。
+  随后我们在二值原语上复现了同一种失灵：据「是否需要人工」这个代理标签训练出来的头，在诚实问题上的成绩是 \OldHeadAccNoul{}，
+  低于恒答基线；规则重标加重训把它抬到 \AccNoul{}、\BAccNoul{} —— 但只在自然分布上。
+  我们把那张让我们保持诚实的反例切片也报出来：在 \AntibodyN{} 条词面与含义相互抵触的自写样本上，修好标签后的头均衡只有 \AntibodyBAcc{}，
+  低于恒答预测器。合成标签与规则基线同源，所以这些分数衡量的是「对规则的复现与泛化」，不是业务上的真值正确率。
+  \item \textbf{面向校准模型的一套部署纪律。} 我们说明整图 int8 动态量化对这个编码器不可用（宏平均准确率塌陷），
+  只量化 embedding \texttt{Gather} 节点能在 \ModelMb\,MB 上保住精度，并且每个量化变体都必须重拟合自己的温度。
+  我们还报告一个依赖 padding 的数值 bug（它把推理限制在 batch size 1），以及一个测量结果：
+  在我们这台机器上，延迟由问句头的 token 预算主导，而不是由工单正文主导。
+\end{enumerate}
+
+\section{相关工作}
+
+\paragraph{System One 决策模型。} Laya~\cite{laya} 用一个共享编码器加逐原语的头回答 choice、score、noul 三类原语，
+训练目标是强化学习式的决策目标。我们原样采用它的 checkpoint 与目标函数；本文的贡献在数据、标定与部署打包，不在架构。
+\texttt{SemIf}~\cite{semif} 这类免训练路线直接从改都不改的语言模型里读标定后的 logits；我们在这里拒绝这条路线，
+因为它产不出可标定、可量化、可发布的产物，而且我们实测原 checkpoint 的基线数字明显低于微调能达到的水平（宏平均 \OrigAccMacro{}）。
+
+\paragraph{优化与标定。} 我们用 GRPO~\cite{grpo} 那一族的组相对 RLCD 目标微调，用逐原语温度缩放~\cite{calibrated} 做标定 ——
+后者保序，因此不可能拿准确率去换标定。这是刻意的选择：在我们的实验里，标定后的准确率处处等于标定前
+（前 \MacroAccBefore{}，后 \MacroAcc{}），标定带来的收益全部体现在 ECE 上。
+
+\paragraph{高效推理。} 编码器是 ModernBERT 式的双向编码器~\cite{modernbert}；256\,000 行的 embedding 表占了参数量的主要部分。
+ONNX Runtime~\cite{onnxruntime} 提供动态训练后量化~\cite{dynamicquant}；我们在第~\ref{sec:quant} 节详细评测了它，
+结论是「必要但不充分」—— 把每一个 \texttt{MatMul} 都量化掉正是弄坏它的做法。
+
+\paragraph{数据。} 我们的中文来源是一份开放的台湾客服语料和一份开放的多模态推理决策语料（MIT），
+外加一份只用于评测的小规模中文决策基准（CC~BY~4.0）。我们在 \path{DATASETS.md} 里审计许可与来源，
+只在不违背许可的来源上训练。
+
+\section{方法}
+
+\subsection{任务与数据}
+
+一张工单是一段中文文本，我们称之为\emph{状态}（state）。对它问三个问题，三个问题在 \path{mai_jev/questions.py} 里定义一次，
+训练、标定、导出与推理逐字复用：
+
+\begin{itemize}
+  \item \path{route_team}（\texttt{choice}，5 个选项）：售后 / 退款处理 / 技术支持 / 账务 / 投诉升级。
+  \item \texttt{urgency}（\texttt{score}，5 个档位，索引 0 最低）：从 完全不紧急 到 非常紧急。
+  \item \path{needs_refund_or_escalation}（\texttt{noul}）：false/true。
+\end{itemize}
+
+数据集由 \path{scripts/build_dataset.py} 从经过审计的原始来源构建成固定种子的切分：
+\RowsTrain{} 行训练、\RowsCalib{} 行标定、\RowsTest{} 行测试（合计 \DataTotalRows{} 行，种子 \SeedAll{}）。
+标定切分与训练不重叠，且从未参与训练。token 统计相对 \TokBudget{} 的预算给出：p50 为 \TokPFiveZero，p99 为 \TokPNineNine，
+最大 \TokMax，超预算行数为零。
+
+\subsection{代理标签问题}
+
+第一次端到端微调（\texttt{v02}）产出的模型路由准确率很好，而 urgency 只有 \AccScoreVZeroTwo{} —— 远低于关键词规则基线 \RulesAccScore{}。
+问题在数据，不在模型：唯一带「类似紧急度」标签的中文语料标注的是\emph{情绪强度}（客户有多生气），
+这与工单紧急度（人必须多快行动）是两个不同的隐变量。多训 epoch 无用，因为目标函数被要求去拟合一个错误的函数；
+我们跑过更长的训练计划来核实这一点，没有任何改善。
+
+于是我们写了 \path{scripts/label_urgency.py}：一个分级证据标注器，从工单文本里累积正向与负向证据，给出五个档位之一，
+冲突证据取更高档。它刻意比我们规则基线里的关键词规则更强：它累积多类证据、消解负向证据，
+并且把「要退款但没有时间信号」这一常见情形判为第 1 档而不是第 4 档。关键在于它\emph{只}覆写紧急度这一维 ——
+来自审计来源的路由标签原样保留 —— 而且它不调用任何外部 API，这既让流程可复现，也避免了把另一个模型的错误蒸馏进来。
+（我们在这里放过了二值标签，事后看这是低一级的同一个错误；第~\ref{sec:noul} 节重标了它。）
+
+这样得到的标签分布远非均匀，且强烈偏向低档（五个测试档位分别是 \UrgDistAfterZero{}、\UrgDistAfterOne{}、\UrgDistAfterTwo{}、\UrgDistAfterThree{}、\UrgDistAfterFour{} 行）。
+\path{scripts/balance_urgency.py} 把训练切分重采样到 \RowsTrainBalanced{} 行，让每个紧急度档位等量出现。
+下文的 urgency 数字来自这个 \texttt{v03} checkpoint。
+
+\subsection{第二个代理标签}
+\label{sec:noul}
+
+二值原语带着与 urgency 相同的缺陷，只是低一级。它的标签来自源语料的「是否需要人工介入」标注，
+而我们真正问的是客户是否在要求退款、赔付或升级处理。三个切分里代理正例都占到大约三分之二
+（训练 \NoulPosBefore{}，测试 \NoulPosTestBefore{}），而其中大多数正例根本不含任何退款或升级的线索 ——
+它们只是情绪化或时间紧迫的工单。据这个信号训练出来的头，等于又养了一个情绪检测器。
+
+我们用 \path{scripts/label_noul.py} 重标了这个二值标签：一个不调用任何外部 API 的规则证据阶梯，口径是显式写明的 ——
+\emph{true} 覆盖三种情形：明确诉求（「把钱退回我的卡里」）、升级要求或威胁（「再这样我就投诉你们」）、
+以及关于退款、赔付或升级的资格或可能性提问（「还能退货吗？」）；
+\emph{false} 覆盖：只问流程、规则或政策（「投诉流程怎么走？」）、只表达情绪或催促的工单、
+以及客户明确否认自己有诉求（「东西没问题，我就是随便问问退款政策」）。
+「问\emph{资格}」与「问\emph{流程}」之间的区别正是关键词表做不出来的部分，
+所以这个标注器被一套自写反例集锁住：\NoulAntibodyN{} 条样本，词面线索与正确判定刻意相互抵触。
+标注器必须逐条复现它们，否则脚本拒绝产出数据；而我们用来对照的关键词规则基线在其中 \NoulGateDisagree{} 条上与口径不一致 ——
+这正是要点：这个口径不是它被用来对照的那张关键词表。
+
+重标把正例率从 \NoulPosBefore{} 降到训练 \NoulPosTrainAfter{}、测试 \NoulPosTestAfter{}，于是多数类升到 \NoulMajTestAfter{}：
+从此这个原语上的准确率主要衡量的是先验。我们刻意\emph{不}对二值原语过采样或重新配平 —— 只有 urgency 做了均衡 ——
+正是为了让评测停在自然分布上，并且用均衡准确率来判它。随后我们用与 \texttt{v03} 逐项相同的超参重训
+（同种子、同学习计划、同 batch size 与学习率；训练文件除了二值标签之外逐行相同），得到 \texttt{v04} checkpoint，
+本文其余所有数字都出自它。把\emph{旧}头拿去评订正后的问题，得到准确率 \OldHeadAccNoul{}、均衡 \OldHeadBAccNoul{} ——
+低于 \MajAccNoul{} 的恒答基线 —— 这是关于「代理标签当年买到了什么」最清楚的一句话。
+
+\subsection{训练}
+
+我们用 Laya 的 RLCD 损失~\cite{laya} 微调这个多语言基座：在选项集上构造扰动后的对数概率、组相对优势，
+外加一个软交叉熵锚项，训练两个 epoch，等效 batch 32，固定种子。单张消费级 GPU 上约十五分钟。
+模型在与训练不重叠的测试切分上评测，对照三条基线：未修改的基座 checkpoint、一个关键词规则系统、以及多数类预测器。
+
+\subsection{温度标定}
+
+每个原语有各自的温度，在 \RowsCalib{} 行的标定切分上以最小化负对数似然拟合，ECE 在测试切分上用 15 个等宽桶测量。
+温度缩放改不了 argmax，所以第~\ref{sec:results} 节报出的标定前后准确率完全相同。
+三个拟合出来的温度相差一个数量级 —— \TChoice、\TScore、\TNoul{} —— 其中 score 需要的修正最大，也就是说它标定前最过度自信。
+
+\subsection{部署打包}
+
+\path{scripts/build_export.py} 组装出一个自包含目录：ONNX 图、在该图上拟合的 \path{calibration.json}、
+\path{questions.json}、\path{deploy_config.json}、tokenizer，以及带逐文件 SHA-256 的 \path{MANIFEST.json}。
+\path{mai_jev/deploy.py} 是推理路径：\texttt{onnxruntime} 加 \texttt{tokenizers} 加 \texttt{numpy}，
+不带 PyTorch、不带 Transformers。它按训练代码完全相同的方式渲染每个问句头、记下每个选项在序列里的标记位置，
+并且一次只跑一张工单、用精确长度（原因见第~\ref{sec:quant} 节）。
+
+有一条设计纪律值得当作普遍教训写下来。问句头预算必须是\emph{构建期不变量}：早先的一次构建复用了过期的序列长度设置，
+状态的预算被静默地挤成零，路由准确率从 \AccChoice{} 塌到 \AccCollapsed{}，而输出格式毫无异样。
+现在导出器与部署器在头装不下时会大声失败。这个失效模式的一般形态是：头预算的错误在输出 schema 里是看不见的 ——
+它把模型退化成「只读问句」—— 所以我们加的是显式检查，而不是依赖损失曲线。
+
+\section{结果}
+\label{sec:results}
+
+\subsection{决策质量}
+
+表~\ref{tab:main} 给出标定之后、在留出测试切分上的逐原语结果。
+
+\begin{table}[t]
+\centering
+% 中文表头（「均衡准确率」「平均置信度」）比英文占宽，11pt 下整表超出正文宽 10.16pt，故缩一档。
+\small
+\caption{标定之后、在留出测试切分（\RowsTest{} 行）上的逐原语结果。「均衡准确率」是按 gold 类别宏平均的准确率；
+「软准确率」是分给 gold 选项的平均概率。ECE 越低越好。}
+\label{tab:main}
+\input{generated/tab_main_zh.tex}
+\end{table}
+
+图~\ref{fig:acc} 把微调后的模型与三条基线逐原语对比。微调后模型的宏平均准确率为 \MacroAcc{}，
+未修改基座为 \OrigAccMacro{}；它在每个原语上都胜出关键词规则系统（\RulesAccChoice{}、\RulesAccScore{}、\RulesAccNoul{}）。
+单项增益最大的是 urgency：基座 \OrigAccScore{}，标签修好后 \AccScore{}。
+有两处对比需要留神，因为在一个偏斜的原语上，准确率主要衡量的是先验。
+二值原语重标后多数类被翻转，模型的均衡准确率是 \BAccNoul{}，对照关键词规则的 \RulesBAccNoul{} 与恒答预测器的 \MajAccNoul{}。
+urgency 上同一个修正反向切进来：关键词规则在准确率上看着还行（\RulesAccScore{}），但均衡准确率只有 \RulesBAccScore{}，而模型是 \BAccScore{}。
+
+\begin{figure}[t]
+\centering
+\input{generated/fig_accuracy_zh.tex}
+\caption{测试切分上的逐原语准确率：关键词规则、未微调的基座 checkpoint、多数类、以及 mai-jev。}
+\label{fig:acc}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\input{generated/fig_ece_zh.tex}
+\caption{逐原语温度标定前后的期望校准误差。标定前误差最大的原语，并不是改善最大的那个：
+拟合目标是最小化似然，不是最小化 ECE。}
+\label{fig:ece}
+\end{figure}
+
+标定行为总结在图~\ref{fig:tiers} 里。标定后 urgency 把 \AutoCovScore{} 的工单放进高置信档，该档准确率为 \AutoAccScore{}，
+也就是说它在很大程度上可以自动执行。另两个原语放进该档的比例分别是 \AutoCovChoice{} 与 \AutoCovNoul{} ——
+温度缩放把它们的置信度压到了 \num{0.9} 阈值之下 —— 所以在我们的运营策略里它们走复核而不是自动执行。
+我们如实报告这个不对称，而不是按原语去调阈值，因为在测试切分上挑出来的逐原语阈值，换一个数据集就不成立了。
+
+\begin{figure}[t]
+\centering
+\input{generated/fig_tiers_zh.tex}
+\caption{标定后的置信度分档：横轴为档位，纵轴为覆盖率（该档工单占比）与该档内准确率，给出 urgency 与 noul 两个原语。}
+\label{fig:tiers}
+\end{figure}
+
+\subsection{效率}
+
+表~\ref{tab:eff} 报告打包好的部署变体：单图 int8-gather ONNX 模型 \ModelMb\,MB（fp32 为 \FpThreeTwoMb\,MB），
+为 \BenchN{} 张工单在 \BenchThreads{} 个 CPU 线程上回答全部三个原语，
+p50--p95 为 \LatPFiveZero--\LatPNineFive\,ms，均值 \LatMean\,ms，加载后常驻 \RssMb\,MB，峰值 \RssPeakMb\,MB。
+
+\begin{table}[t]
+\centering
+\caption{部署变体，batch size 一，\BenchThreads{} 线程，序列上限 \BenchMaxLen，重复 \BenchN{} 次。延迟覆盖一张工单的三个原语。}
+\label{tab:eff}
+\begin{tabular}{lr}
+\toprule
+模型体积（\path{model.onnx}） & \ModelMb\,MB \\
+fp32 参照 & \FpThreeTwoMb\,MB \\
+tokenizer & \TokMb\,MB \\
+加载后常驻 & \RssMb\,MB \\
+峰值常驻 & \RssPeakMb\,MB \\
+模型加载耗时 & \LoadS\,s \\
+三原语 p50 延迟 & \LatPFiveZero\,ms \\
+p95 延迟 & \LatPNineFive\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+量化的精度代价可以忽略：在同一测试切分上相对 fp32 图，部署变体逐原语的偏差是 \QuantDeltaChoice{}、\QuantDeltaScore{}、\QuantDeltaNoul{}。
+
+\emph{版本说明。} 本小节与第~\ref{sec:quant} 节描述的是 \texttt{v03} 包，也就是今天发布的那个产物。
+第~\ref{sec:noul} 节的 \texttt{v04} checkpoint 与它的差别只在二值头的权重，导出图的体积完全相同，
+因此体积、内存与延迟数字按构造原样沿用；\texttt{v04} 权重的量化变体逐原语精度，等那个包真正构建时再测量 ——
+我们不报没有测过的数字。
+
+\subsection{延迟由问句决定，而不是正文}
+
+上面的 p50 比「322M 模型跑四个线程」的直觉高一个数量级，而原因不在编码器。问句头很长 ——
+\texttt{choice} 与 \texttt{score} 的判定标准是每个选项一句中文 —— 渲染出来的头约占 110 个 token，
+而训练长度下工单正文的中位数是 \TokPFiveZero{} 个 token。把延迟当作状态预算的函数来测，可以看出
+在\emph{零}工单 token 时三个头就已需要 \StateOnlyMs\,ms，直到把预算拉满也只升到 \StateFullMs\,ms。由此得到两条结论，两条都是负面结果：
+
+\begin{enumerate}
+  \item 对这类模型、在四个 CPU 线程上，单问句 p50 低于 \num{50}~ms 是不可达的；预算被问句吃掉了，不是被文档。
+  要满足这样的目标，就得改写判定标准本身（那会改变模型的语义），或者换更小的编码器。
+  \item 我们试过把三个原语合并成一次前向传播。它\emph{更慢}（\BatchMergedMs\,ms，而三次 batch-one 调用是 \BatchSeparateMs\,ms），
+  因为编码器无论如何都要逐行跑，而三个问句产生的序列确实不同。
+\end{enumerate}
+
+\subsection{量化、标定与一个 padding bug}
+
+\label{sec:quant}
+
+整图动态 int8 量化 —— 最顺手的那个选择 —— 在这个编码器上失败：准确率塌到 fp32 的四分之一左右，score 原语上的 logit 误差很大。
+原因是 ONNX Runtime 的动态量化器会碰到每一个 \texttt{MatMul}，而双向编码器的动态范围扛不住逐通道 int8。
+只量化 \texttt{Gather} 节点 —— 即占了大约半个图的 embedding 表 —— 把 \texttt{MatMul} 留在 fp32，
+得到 \ModelMb\,MB，最大 logit 绝对偏差约 \num{0.1}，三个原语的 argmax 判定全部不变。
+静态 QDQ 与 QOperator 量化也试过，都因工具链失败而放弃；可用的量化器不支持 int4。
+
+\begin{table}[t]
+\centering
+\caption{评测过的量化方案。Agreement 是预测选项与 fp32 一致的测试条目比例；两行 int8 改报相对 fp32 的最大 logit 绝对偏差，
+因为它们的 argmax 一致率已经塌了。}
+\label{tab:quant}
+\begin{tabular}{lrrl}
+\toprule
+方案 & 体积（MB） & 一致率 / max$|d\text{logit}|$ & 结论 \\
+\midrule
+fp32 & \FpThreeTwoMb & \num{1.000} & 超出 \SI{1}{\giga\byte} 预算 \\
+整图 int8（逐通道） & \QuantWholeMb & \QuantWholeMaxD & 弃用 \\
+只量化 int8 \texttt{Gather} & \ModelMb & \AgreeNum & 采用 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+由此得到两条部署事实，值得分开陈述，因为两条都是静默失效模式。
+
+\paragraph{温度是逐变体的。} 在量化图上用同一套流程、同一个标定切分拟合温度，得到的是
+\TChoiceOnnx{}、\TScoreOnnx{}、\TNoulOnnx{}，而不是 \TChoice{}、\TScore{}、\TNoul{}。这不是拟合器的 bug：
+量化改变了 logit 的尺度，所以权重蕴含的置信度不是图实际吐出的置信度。
+跨变体沿用一个温度会把最差单原语 ECE 顶到 \num{0.10} 目标线之上，而逐变体重拟合能把它拉回 \EceWorstOnnx{}。
+因此我们在每个导出目录里各放一份 \path{calibration.json}，并把「跨变体复用温度」当作发布错误。
+
+\paragraph{Batching 会破坏数值。} 右 padding 的 batch 里超过一行时，短的 \texttt{noul} 行会返回非有限值，
+而同样的行单独跑、或在 PyTorch 里 eager 跑都是对的。症状局限在导出图里 padding 下的 score/noul 头路径上。
+因为 batch size 一恰好也是我们延迟目标要求的形状，我们就按 batch 一部署，并把这个约束写进文档，
+而不是去绕一个我们还解释不了的图。
+
+\section{局限、负面结果与伦理}
+
+\paragraph{urgency 的准确率不是业务准确率。} 我们的 urgency 标签由我们自己写的证据分级器产出。
+这个分级器与我们的规则基线属于同一族产物，所以模型在该原语上的 \AccScore{} 衡量的是对它的复现加泛化，
+不是相对人类紧急度判断的正确率。两个独立信号支持这份谨慎：该原语的均衡准确率只有 \BAccScore{}，
+远低于路由的 \BAccChoice{}；并且对 \SelfCheckN{} 张抽样工单做人工抽查时，
+发现 \SelfCheckDisagree{} 处模型与规则基线判断不一致 —— 那正是一个「泛化了而不是背下来了」的模型该有的特征。
+缺的那味料是人工标注的紧急度数据集，我们把它当作下一步最有价值的工作，而不是一条脚注。
+
+\paragraph{标定余量很薄，而且在这个 checkpoint 上没达标。} 拟合后最差单原语 ECE 是 \WorstEce{}，对照我们 \num{0.10} 的目标线。
+原因是可辨认的，而且我们认为它比「没达标」这句话更有用：在路由原语上，按似然拟合出来的温度反而把测试 ECE 从 \EceBeforeChoice{} 抬到了 \EceChoice{}，
+因为 \RowsCalib{} 行的标定切分同测试切分的准确率之差，大过它们的置信度之差；上一个 checkpoint 在几乎相同的温度下表现完全一样，
+所以 \RowsTest{} 行规模上，「低于 \num{0.10}」这条线是抽样噪声决定的，不是方法决定的。
+我们没有按测试 ECE 去挑温度 —— 那等于在测试集上拟合 —— 而是如实报出这次不达标。
+要真正修好，得扩大标定切分，或者在它内部另留一子集按 ECE 选温度：那是标定方法的改动，不是这个模型的改动。
+因此我们不声称这个模型「可靠校准」，我们声称的是：在这个留出的中文工单分布上、这个模型尺寸下、逐变体拟合之后，
+实测最差 ECE 为 \WorstEce{}。温度拟合最小化的是似然而不是 ECE，而各原语 ECE 变化的方向并不一致，这在图~\ref{fig:ece} 里看得到。
+
+\paragraph{第二个代理标签在数据里修好了，在模型里只修好一半。} 第~\ref{sec:noul} 节重标了二值标签并重训，所以那笔标签债是还清的：
+该原语达到准确率 \AccNoul{}、均衡 \BAccNoul{}，对照恒答基线的 \MajAccNoul{} 与关键词基线的 \RulesBAccNoul{}。
+没有还清的是模型学到的东西。在 \AntibodyN{} 行的反例集上 —— 自写、不在任何切分里、且刻意让词面线索与判定相抵触 ——
+同一个头拿到准确率 \AntibodyAcc{}、均衡 \AntibodyBAcc{}，低于「永远答否」的 \AntibodyMajAcc{}。
+关键词规则更差（均衡 \AntibodyRulesBAcc{}），所以这个头不只是关键词表；但 \RowsTrain{} 行训练数据让它复现了新的标签分布，
+并没有让它获得定义这个分布的边界样本。把这些反例喂进训练，或者建设一份人工审计的二值标注集，是下一步；
+在那之前，我们把这个原语当作「复核用」而不是「可自动执行」。
+
+\paragraph{硬件。} 所有延迟与内存数字都测自一台当代笔记本级的 x86 CPU、四个线程。部署目标是一台更老的机器，
+它只可能更慢；所以我们的数字是一个乐观上界，不是那个目标机能力的证明。
+
+\paragraph{数据许可与用途。} 训练数据取自 MIT 与 CC~BY~4.0 来源，署名记录在 \path{DATASETS.md} 里；
+CC~BY~4.0 的署名义务不会传染进模型权重，但我们仍然保留相关声明。
+中文决策基准只用于留出评测，从未参与训练，模型卡对此有明确声明。
+模型卡同时记录：没有任何训练标签是用专有或付费的标注 API 造出来的 ——
+把一个教师的错误蒸馏进标定目标，比没有教师更糟。
+
+\paragraph{范围。} mai-jev 是一次「权重加脚本」的发布。没有托管推理服务，没有多模态输入，
+也没有移动端（arm64）构建：我们没有 arm64 设备可用来验证，而目标机需要的那套 int4 工具链不可用。
+
+\section{可复现性}
+
+本文中每一条定量陈述都落在 \path{paper/generated/numbers.tex} 里的一个宏上，而每个宏都由 \path{scripts/make_paper_tables.py}
+从训练、标定、导出与基准脚本产出的 JSON 产物生成。正文中没有任何数字是手工誊抄的；
+若某个输入产物缺失，生成器会直接报错退出，而不是输出一个过期数字。
+两个标签分级器各自带着自己的闸门：\path{scripts/label_urgency.py} 与 \path{scripts/label_noul.py}
+在自写反例集与它们相抵触时拒绝产出数据；\path{scripts/eval_noul_antibody.py} 能从发布出去的 checkpoint 复现第~\ref{sec:noul} 节的反例切片数字。
+仓库携带完整链条 —— 数据集构建、RLCD 训练、温度拟合、ONNX 导出与量化、打包、CPU 基准、
+以及对导出产物的评测 —— 外加数据来源与许可审计。基座 checkpoint 是 Apache-2.0，
+mai-jev 以同一许可作为修改版本发布，并保留上游署名。
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

@@ -7,7 +7,7 @@
 > [RUNS.md](RUNS.md) 的 2026-10-17 条。
 
 > 票 [#8](https://github.com/Maicarons/mai-jev/issues/8) · wayfinder:research
-> 所有数字都是本机实测（desktop-class CPU / Windows / venv `$WORK\venv`，torch 2.6.0+cu124 / onnx 1.31.0 / tokenizers 0.23.3），产物全部落在 `$WORK\onnx\`，未新增任何 pip 依赖。
+> 所有数字都是本机实测（台式 x86 CPU / Windows / venv `$WORK\venv`，torch 2.6.0+cu124 / onnx 1.31.0 / tokenizers 0.23.3），产物全部落在 `$WORK\onnx\`，未新增任何 pip 依赖。
 
 ---
 
@@ -270,7 +270,7 @@ ECE（施加 #6 的 shipped 温度）：
 
 ⇒ **建议：发布配置 `max_len=96`、`head_max_len=96`，并在文档里写明「>96 token 的工单按前 96 token 决策」。** 若业务不能接受截断，则 p50<50ms 这条验收线在 CPU-only 靶机上**物理上不可达**，需要改验收线或上 float16/蒸馏（§8）。
 
-**注意本机是 desktop-class CPU（8 核 + 超线程），4 线程实际能吃到约 4 个核。「x86 CPU-only 老笔记本」的真实性能大概率只有这里的 40–60%。本票所有延迟数字应视为乐观下界，正式验收必须在真实靶机上重跑 `scripts/quantize_onnx.py` 的 bench 段。**
+**注意本机是一台台式 x86 CPU，4 线程能吃满 4 个核。「x86 CPU-only 老笔记本」的真实性能大概率只有这里的 40–60%。本票所有延迟数字应视为乐观下界，正式验收必须在真实靶机上重跑 `scripts/quantize_onnx.py` 的 bench 段。**
 
 ---
 
@@ -376,7 +376,7 @@ mai-jev-predict --model-dir <dir> --input <text|jsonl> [--max-len 96] [--threads
 ### 8.2 未决问题
 
 1. **【阻塞发布】`max_len` 拍板。** `max_len=96` → p50 44.0ms 达标但截断长工单；`max_len=512` → p50 65.7ms 不达标。需要业务/用户决定截断是否可接受，或改验收线。**这是唯一卡住「p50<50ms 达标」的因素。**
-2. **【阻塞发布】真实靶机复测。** 本机是 desktop-class CPU，4 线程只相当于靶机的乐观上界。必须在真实老笔记本上跑 `quantize_onnx.py` 的 bench 段重测 p50 与 RSS。
+2. **【阻塞发布】真实靶机复测。** 本机是一台台式 x86 CPU，4 线程只相当于靶机的乐观上界。必须在真实老笔记本上跑 `quantize_onnx.py` 的 bench 段重测 p50 与 RSS。
 3. **`score` 原语在 int8 下掉到 0.4606。** 是否接受「urgency 只做参考分、强制转人工」（#6 已定），还是投入合成正确标签的数据来救（#7 结论：加 epoch 无用，只有 teacher 合成有效）。
 4. **float16 值得试。** checkpoint 里权重本就是 F16，fp16 ONNX 图预计 ~600 MB（≤1GB），精度应接近 fp32，可能是「保住 score 又满足延迟」的更好解。未实测。
 5. **§1.5 的 NaN 根因未修。** batch=1 规避有效，但影响未来做批量推理。
@@ -388,7 +388,7 @@ mai-jev-predict --model-dir <dir> --input <text|jsonl> [--max-len 96] [--threads
 > - **1（max_len 拍板）→ #9 拍板**：发布变体定为 `int8-gather / max_len=256`。`max_len=96` 被否不是因为截断长工单，而是它连 `choice`/`score` 的 head（109/110 token）都装不下 —— 整条工单正文被静默丢弃，`route_team` 从 0.945 掉到 0.1826（`fd32c83` 加了双闸门，装不下就直接报错退出）。同时验收线改为「一条工单跑完三原语合计 p50 < 500ms」。
 > - **3（score 在 int8 下 0.4606）→ #16 解决**：根因不是量化而是**标签语义错**（`emotion_intensity` 当成了 urgency）。用规则证据分级器合成正确的 urgency 标签 + 重平衡后，`urgency` 在 torch 上 0.9329、在发布用的 int8 图上 0.9359，整变体量化退化 ≤0.0029。
 > - **7（逐变体重标定）→ 已写进产物**：`scripts/calibrate_export.py` 负责在**该变体自己的 calib** 上重拟合，`deploy_config.json` 的口径声明会随每个变体一起发布 —— 不靠人记。
-> - **2 尤其仍未解决**：本机 desktop-class CPU 是靶机的乐观上界，而发布变体的端到端 p50 已经是 421–499ms（见 [RUNS.md](RUNS.md) 2026-10-17 条），余量 0–16%。
+> - **2 尤其仍未解决**：本机 CPU 是靶机的乐观上界，而发布变体的端到端 p50 已经是 421–499ms（见 [RUNS.md](RUNS.md) 2026-10-17 条），余量 0–16%。
 
 ### 8.3 新依赖说明
 

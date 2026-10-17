@@ -1,0 +1,14 @@
+\begin{tikzpicture}
+\begin{axis}[ybar, bar width=10pt, width=0.9\linewidth, height=4.8cm,
+  ymin=0, ymax=1, ylabel={占比}, symbolic x coords={自动$\geq$0.9,复核 0.6--0.9,转人工$<$0.6},
+  xtick=data, legend style={at={(0.5,-0.20)},anchor=north,legend columns=-1}, legend cell align=left]
+\addplot coordinates {(自动$\geq$0.9,\AutoCovScore) (复核 0.6--0.9,\ReviewCovScore) (转人工$<$0.6,\HumanCovScore)};
+\addlegendentry{urgency：覆盖率}
+\addplot coordinates {(自动$\geq$0.9,\AutoAccScore) (复核 0.6--0.9,\ReviewAccScore) (转人工$<$0.6,\HumanAccScore)};
+\addlegendentry{urgency：该档准确率}
+\addplot coordinates {(自动$\geq$0.9,\AutoCovNoul) (复核 0.6--0.9,\ReviewCovNoul) (转人工$<$0.6,\HumanCovNoul)};
+\addlegendentry{noul：覆盖率}
+\addplot coordinates {(自动$\geq$0.9,\AutoAccNoul) (复核 0.6--0.9,\ReviewAccNoul) (转人工$<$0.6,\HumanAccNoul)};
+\addlegendentry{noul：该档准确率}
+\end{axis}
+\end{tikzpicture}

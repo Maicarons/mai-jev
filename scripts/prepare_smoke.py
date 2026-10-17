@@ -10,13 +10,15 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-# venv 在仓库外的 $WORK\venv（工作区空间大，放得下权重与 checkpoint）。
-WORK = Path("$WORK")
+# venv 在仓库外的工作区里（工作区空间大，放得下权重与 checkpoint）。
+# 用 $MAI_JEV_WORK 指到工作区根；不设就按「仓库的同级目录 mai-jev-work」猜。
+WORK = Path(os.environ.get("MAI_JEV_WORK", REPO.parent / "mai-jev-work"))
 PY = WORK / "venv" / "Scripts" / "python.exe"
 RAW = WORK / "data" / "raw"
 DATA = WORK / "data"

@@ -8,7 +8,7 @@ is what makes it usable: it lifts argmax agreement with eager fp32 from 0.44 to
 rejected: QOperator fails outright on torch's fused Gather/Clip/Squeeze, and QDQ
 collapses macro accuracy to 0.2536 on the #6 test split (vs 0.7823 fp32).
 
-Measured on desktop-class CPU, 4 threads, batch=1, #6 test split (1029 records):
+Measured on a desktop-class x86 CPU, 4 threads, batch=1, #6 test split (1029 records):
     fp32  1228.6 MB  p50 65.7 ms (max_len 512) / 264.0 ms (cap sweep)  RSS 1327 MB
     int8   308.6 MB  p50 65.7 ms (max_len 512) /  44.0 ms (max_len 96)  RSS  408 MB
 
@@ -68,8 +68,8 @@ def make_feed(seq_len, markers=8, seed=1):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fp32", default=r"$WORK\onnx\laya_fp32.onnx")
-    ap.add_argument("--out-dir", default=r"$WORK\onnx")
+    ap.add_argument("--fp32", default=os.path.join("onnx", "laya_fp32.onnx"))
+    ap.add_argument("--out-dir", default="onnx")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--iters", type=int, default=40)
     ap.add_argument("--seq-len", type=int, default=256)

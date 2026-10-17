@@ -2,14 +2,16 @@
 
 硬约束（map #1 继承）：**论文里每个数字都必须能由仓库脚本重新跑出来，禁止手工誊抄。**
 所以本脚本是论文与实验产物之间唯一的桥：读 JSON 产物 → 生成 `.tex` 宏与 pgfplots 图 →
-`paper/mai-jev.tex` 只 `\input` 这些生成文件。正文里不出现任何一个手写的小数。
+`paper/mai-jev.tex` 只 `\\input` 这些生成文件。正文里不出现任何一个手写的小数。
 
 产物（默认写到 `paper/generated/`）：
   numbers.tex        每个数字一个 `\\newcommand`，正文引用宏名而非字面量
   fig_accuracy.tex   三原语 × 四条曲线（微调前/后、规则基线、多数类）
   fig_ece.tex        标定前后 ECE 对照
   fig_tiers.tex      置信度三档覆盖率 vs 该档命中率
-  tab_*.tex          若干表格
+  tab_main.tex       三原语主表
+  上述图与表的 `*_zh.tex`：同一批宏、同一版式，只有坐标轴/图例/表头换成中文，
+  供中文版论文 `paper/mai-jev-zh.tex` 使用。中英两版一起生成，避免标签漂移。
 
 用法（工作目录必须是仓库根）：
   python scripts/make_paper_tables.py ^
@@ -58,6 +60,28 @@ def num(v, nd: int = 4) -> str:
     return f"{float(v):.{nd}f}"
 
 
+# 来源路径改写成相对路径时用的基准目录（--source-root，默认当前目录）。
+SOURCE_ROOT = "."
+
+
+def scrub_source(text: str) -> str:
+    """把来源串开头的本机绝对路径改写成相对路径。
+
+    论文产物会随仓库公开，**盘符与工作区绝对路径不该进论文**。来源串的形态是
+    `.../calibration_eval.json:test_after.score.ece`：前一段是文件路径，后一段是
+    JSON 指针（用 `:` 隔开）。所以这里只动「第一个冒号之前」那一段。
+    """
+    if not re.match(r"^[A-Za-z]:[\\/]", text):
+        return text
+    cut = text.find(":", 3)
+    head, tail = (text, "") if cut == -1 else (text[:cut], text[cut:])
+    path = Path(head)
+    try:
+        return path.resolve().relative_to(Path(SOURCE_ROOT).resolve()).as_posix() + tail
+    except ValueError:
+        return "/".join(path.parts[-3:]) + tail
+
+
 class Macros:
     """收集 `\\newcommand{\\xxx}{value}`，最后统一写出并附带来源注释。"""
 
@@ -84,7 +108,7 @@ class Macros:
         safe = self._csname(name)
         if any(n == safe for n, _, _ in self.rows):
             raise ValueError(f"宏名 {safe!r} 重复定义（原始名 {name!r}）")
-        self.rows.append((safe, value, source))
+        self.rows.append((safe, value, scrub_source(source)))
         return safe
 
     def render(self) -> str:
@@ -119,13 +143,17 @@ def main() -> None:
                     help="proxy 标签时期的 v02 评测 JSON，用于给出 urgency 的折损幅度")
     ap.add_argument("--int8-calib-report", default="export/v03_int8_calib_report.json",
                     help="calibrate_export.py --report 的产物：量化变体自身重拟合温度后的 test 指标")
-    ap.add_argument("--export-dir", default="$WORK/export/v03-int8-ml256",
+    ap.add_argument("--export-dir", default="export/v03-int8-ml256",
                     help="发布变体目录，只用它量 tokenizer 大小")
     # bench_report.json 的 parity 只对 96/128/512 三档测过；默认取 512（唯一 state 预算充足的一档）。
     ap.add_argument("--parity-max-len", type=int, default=512,
                     help="bench_report.json 的 parity 用哪个 max_len 分区（96/128/512）")
+    ap.add_argument("--source-root", default=".",
+                    help="来源路径改写成相对路径的基准目录（默认当前目录）")
     ap.add_argument("--out", default="paper/generated")
     args = ap.parse_args()
+    global SOURCE_ROOT
+    SOURCE_ROOT = args.source_root
 
     ev = load(Path(args.eval_json))
     tr = load(Path(args.train_json))
@@ -398,79 +426,131 @@ def main() -> None:
 
     # --------------------------------------------------------------------------- figures
     keys = ("Choice", "Score", "Noul")
-    fig_acc = [
-        r"\begin{tikzpicture}",
-        r"\begin{axis}[ybar, bar width=14pt, width=0.9\linewidth, height=5.2cm,",
-        r"  ymin=0, ymax=1, ylabel={accuracy}, symbolic x coords={route\_team,urgency,noul},",
-        r"  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,",
-        r"  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]",
-        r"\addplot coordinates {(route\_team,\RulesAccChoice) (urgency,\RulesAccScore) (noul,\RulesAccNoul)};",
-        r"\addlegendentry{rule baseline}",
-        r"\addplot coordinates {(route\_team,\OrigAccChoice) (urgency,\OrigAccScore) (noul,\OrigAccNoul)};",
-        r"\addlegendentry{original laya-multilingual}",
-        r"\addplot coordinates {(route\_team,\MajAccChoice) (urgency,\MajAccScore) (noul,\MajAccNoul)};",
-        r"\addlegendentry{majority class}",
-        r"\addplot coordinates {(route\_team,\AccChoice) (urgency,\AccScore) (noul,\AccNoul)};",
-        r"\addlegendentry{mai-jev (ours)}",
-        r"\end{axis}",
-        r"\end{tikzpicture}",
-    ]
-    (out / "fig_accuracy.tex").write_text("\n".join(fig_acc) + "\n", encoding="utf-8")
 
-    fig_ece = [
-        r"\begin{tikzpicture}",
-        r"\begin{axis}[ybar, bar width=16pt, width=0.9\linewidth, height=4.6cm,",
-        r"  ymin=0, ymax=0.12, ylabel={ECE}, symbolic x coords={route\_team,urgency,noul},",
-        r"  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,",
-        r"  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]",
-        r"\addplot coordinates {(route\_team,\EceBeforeChoice) (urgency,\EceBeforeScore) (noul,\EceBeforeNoul)};",
-        r"\addlegendentry{before temperature scaling}",
-        r"\addplot coordinates {(route\_team,\EceChoice) (urgency,\EceScore) (noul,\EceNoul)};",
-        r"\addlegendentry{after temperature scaling}",
-        r"\end{axis}",
-        r"\end{tikzpicture}",
-    ]
-    (out / "fig_ece.tex").write_text("\n".join(fig_ece) + "\n", encoding="utf-8")
+    def emit_assets(lang: str) -> list[str]:
+        """写出**一个语言版本**的 3 张图 + 1 张表，返回拼好的正文串（供末尾自检）。
 
-    fig_tiers = [
-        r"\begin{tikzpicture}",
-        r"\begin{axis}[ybar, bar width=10pt, width=0.9\linewidth, height=4.8cm,",
-        r"  ymin=0, ymax=1, ylabel={fraction}, symbolic x coords={auto$\geq$0.9,review 0.6--0.9,human$<$0.6},",
-        r"  xtick=data, legend style={at={(0.5,-0.20)},anchor=north,legend columns=-1}, legend cell align=left]",
-        r"\addplot coordinates {(auto$\geq$0.9,\AutoCovScore) (review 0.6--0.9,\ReviewCovScore) (human$<$0.6,\HumanCovScore)};",
-        r"\addlegendentry{urgency: coverage}",
-        r"\addplot coordinates {(auto$\geq$0.9,\AutoAccScore) (review 0.6--0.9,\ReviewAccScore) (human$<$0.6,\HumanAccScore)};",
-        r"\addlegendentry{urgency: accuracy in tier}",
-        r"\addplot coordinates {(auto$\geq$0.9,\AutoCovNoul) (review 0.6--0.9,\ReviewCovNoul) (human$<$0.6,\HumanCovNoul)};",
-        r"\addlegendentry{noul: coverage}",
-        r"\addplot coordinates {(auto$\geq$0.9,\AutoAccNoul) (review 0.6--0.9,\ReviewAccNoul) (human$<$0.6,\HumanAccNoul)};",
-        r"\addlegendentry{noul: accuracy in tier}",
-        r"\end{axis}",
-        r"\end{tikzpicture}",
-    ]
-    (out / "fig_tiers.tex").write_text("\n".join(fig_tiers) + "\n", encoding="utf-8")
+        「正文里不出现手写小数」对两版论文一视同仁：图与表都在这里生成，值全部走宏。
+        中英两版共用同一批宏，只有坐标轴、图例与表头的文字不同，所以两版一起写出来，
+        免得改了英文标签忘了中文（或反过来）造成漂移。`lang` 取 "en" 或 "zh"。
+        """
+        zh = lang == "zh"
+        suffix = "_zh" if zh else ""
+        tiers = ("自动$\\geq$0.9", "复核 0.6--0.9", "转人工$<$0.6") if zh else \
+                ("auto$\\geq$0.9", "review 0.6--0.9", "human$<$0.6")
+        t = {
+            "TIER_A": tiers[0],
+            "TIER_B": tiers[1],
+            "TIER_C": tiers[2],
+            "ACC_YLABEL": "准确率" if zh else "accuracy",
+            "TIER_YLABEL": "占比" if zh else "fraction",
+            "RULES": "关键词规则基线" if zh else "rule baseline",
+            "ORIGINAL": "原版 laya-multilingual（未微调）" if zh else "original laya-multilingual",
+            "MAJORITY": "多数类" if zh else "majority class",
+            "OURS": "mai-jev（本文）" if zh else "mai-jev (ours)",
+            "ECE_BEFORE": "温度标定前" if zh else "before temperature scaling",
+            "ECE_AFTER": "温度标定后" if zh else "after temperature scaling",
+            "URG_COVERAGE": "urgency：覆盖率" if zh else "urgency: coverage",
+            "URG_ACCURACY": "urgency：该档准确率" if zh else "urgency: accuracy in tier",
+            "NOUL_COVERAGE": "noul：覆盖率" if zh else "noul: coverage",
+            "NOUL_ACCURACY": "noul：该档准确率" if zh else "noul: accuracy in tier",
+            "GEN_NOTE": ("% 由 scripts/make_paper_tables.py 生成（中文论文版）" if zh
+                         else "% 由 scripts/make_paper_tables.py 生成"),
+            "TAB_HEADER": ("原语 & 准确率 & 均衡准确率 & 软准确率 & ECE & 平均置信度 \\\\"
+                           if zh else
+                           "primitive & accuracy & bal.\\ acc & soft acc & ECE & mean conf \\\\"),
+        }
+        chunks: list[str] = []
 
-    # ---------------------------------------------------------------------------- tables
-    # `numbers.tex` 已经写完，这里只拼字符串；重复 `m.add` 会产生重名 \newcommand 让 LaTeX 报错。
-    rows = []
-    for key, prim in zip(keys, PRIMS):
-        rows.append(
-            f"{PRIM_LABEL[prim]} & \\Acc{key} & "
-            f"{num(after[prim]['balanced_accuracy'])} & {num(after[prim]['soft_accuracy'])} & "
-            f"{num(after[prim]['ece'])} & {num(after[prim]['mean_confidence'])} \\\\"
+        def fill(tpl: list[str]) -> list[str]:
+            """把 `%KEY%` 占位符换成当前语言的文字；没换干净就报错，别把 `%` 当注释写进 tex。"""
+            filled = []
+            for line in tpl:
+                for key, val in t.items():
+                    line = line.replace("%" + key + "%", val)
+                if "%" in line:
+                    raise SystemExit(f"图表模板里有未替换的占位符：{line}")
+                filled.append(line)
+            return filled
+
+        fig_acc = fill([
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[ybar, bar width=14pt, width=0.9\linewidth, height=5.2cm,",
+            r"  ymin=0, ymax=1, ylabel={%ACC_YLABEL%}, symbolic x coords={route\_team,urgency,noul},",
+            r"  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,",
+            r"  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]",
+            r"\addplot coordinates {(route\_team,\RulesAccChoice) (urgency,\RulesAccScore) (noul,\RulesAccNoul)};",
+            r"\addlegendentry{%RULES%}",
+            r"\addplot coordinates {(route\_team,\OrigAccChoice) (urgency,\OrigAccScore) (noul,\OrigAccNoul)};",
+            r"\addlegendentry{%ORIGINAL%}",
+            r"\addplot coordinates {(route\_team,\MajAccChoice) (urgency,\MajAccScore) (noul,\MajAccNoul)};",
+            r"\addlegendentry{%MAJORITY%}",
+            r"\addplot coordinates {(route\_team,\AccChoice) (urgency,\AccScore) (noul,\AccNoul)};",
+            r"\addlegendentry{%OURS%}",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+        ])
+        (out / f"fig_accuracy{suffix}.tex").write_text("\n".join(fig_acc) + "\n", encoding="utf-8")
+
+        fig_ece = fill([
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[ybar, bar width=16pt, width=0.9\linewidth, height=4.6cm,",
+            r"  ymin=0, ymax=0.12, ylabel={ECE}, symbolic x coords={route\_team,urgency,noul},",
+            r"  xtick=data, legend style={at={(0.5,-0.18)},anchor=north,legend columns=-1}, legend cell align=left,",
+            r"  nodes near coords, nodes near coords align={vertical}, every node near coord/.append style={font=\scriptsize}]",
+            r"\addplot coordinates {(route\_team,\EceBeforeChoice) (urgency,\EceBeforeScore) (noul,\EceBeforeNoul)};",
+            r"\addlegendentry{%ECE_BEFORE%}",
+            r"\addplot coordinates {(route\_team,\EceChoice) (urgency,\EceScore) (noul,\EceNoul)};",
+            r"\addlegendentry{%ECE_AFTER%}",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+        ])
+        (out / f"fig_ece{suffix}.tex").write_text("\n".join(fig_ece) + "\n", encoding="utf-8")
+
+        fig_tiers = fill([
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[ybar, bar width=10pt, width=0.9\linewidth, height=4.8cm,",
+            r"  ymin=0, ymax=1, ylabel={%TIER_YLABEL%}, symbolic x coords={%TIER_A%,%TIER_B%,%TIER_C%},",
+            r"  xtick=data, legend style={at={(0.5,-0.20)},anchor=north,legend columns=-1}, legend cell align=left]",
+            r"\addplot coordinates {(%TIER_A%,\AutoCovScore) (%TIER_B%,\ReviewCovScore) (%TIER_C%,\HumanCovScore)};",
+            r"\addlegendentry{%URG_COVERAGE%}",
+            r"\addplot coordinates {(%TIER_A%,\AutoAccScore) (%TIER_B%,\ReviewAccScore) (%TIER_C%,\HumanAccScore)};",
+            r"\addlegendentry{%URG_ACCURACY%}",
+            r"\addplot coordinates {(%TIER_A%,\AutoCovNoul) (%TIER_B%,\ReviewCovNoul) (%TIER_C%,\HumanCovNoul)};",
+            r"\addlegendentry{%NOUL_COVERAGE%}",
+            r"\addplot coordinates {(%TIER_A%,\AutoAccNoul) (%TIER_B%,\ReviewAccNoul) (%TIER_C%,\HumanAccNoul)};",
+            r"\addlegendentry{%NOUL_ACCURACY%}",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+        ])
+        (out / f"fig_tiers{suffix}.tex").write_text("\n".join(fig_tiers) + "\n", encoding="utf-8")
+
+        # ------------------------------------------------------------------------ tables
+        # `numbers.tex` 已经写完，这里只拼字符串；重复 `m.add` 会产生重名 \newcommand 让 LaTeX 报错。
+        rows = []
+        for key, prim in zip(keys, PRIMS):
+            rows.append(
+                f"{PRIM_LABEL[prim]} & \\Acc{key} & "
+                f"{num(after[prim]['balanced_accuracy'])} & {num(after[prim]['soft_accuracy'])} & "
+                f"{num(after[prim]['ece'])} & {num(after[prim]['mean_confidence'])} \\\\"
+            )
+        (out / f"tab_main{suffix}.tex").write_text(
+            t["GEN_NOTE"] + "\n\\begin{tabular}{lrrrrr}\n\\toprule\n"
+            + t["TAB_HEADER"] + "\n\\midrule\n"
+            + "\n".join(rows)
+            + "\n\\bottomrule\n\\end{tabular}\n",
+            encoding="utf-8",
         )
-    (out / "tab_main.tex").write_text(
-        "% 由 scripts/make_paper_tables.py 生成\n\\begin{tabular}{lrrrrr}\n\\toprule\n"
-        "primitive & accuracy & bal.\\ acc & soft acc & ECE & mean conf \\\\\n\\midrule\n"
-        + "\n".join(rows)
-        + "\n\\bottomrule\n\\end{tabular}\n",
-        encoding="utf-8",
-    )
 
-    print(f"wrote {out}/numbers.tex 与 3 张图 + 1 张表")
+        chunks = rows + fig_acc + fig_ece + fig_tiers
+        return chunks
+
+    body_lines = emit_assets("en")
+    emit_assets("zh")
+    print(f"wrote {out}/numbers.tex 与 3 张图 + 1 张表（中英各一份）")
 
     # 自检：所有宏都被图或表引用到，且没有 NaN / inf 混进正文。
-    body = "\n".join(rows) + "\n".join(fig_acc + fig_ece + fig_tiers)
+    body = "\n".join(body_lines)
     missing = [name for name, value, _ in m.rows if "\\" + name not in body and value not in ("n/a",)]
     unused = [name for name, _, _ in m.rows if "\\" + name not in body]
     print(f"宏总数 {len(m.rows)}；未被图表引用的 {len(unused)} 个（正文可用）")
