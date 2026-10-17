@@ -189,3 +189,204 @@ MS 侧用 `delete_files(delete_patterns=...)` 清掉 —— 两地现在都是**
 「三原语合计 p50 < 500ms」在发布变体上只有 0–16% 余量、p95 是 1.7–2.0× 超线，且**只在训练机
 上测过**。真实靶机复测之前，这条验收线只能报区间 + 限定，不能报达标。
 
+## 2026-10-17 第二个 proxy 标签：`noul` 重标 + v0.4 重训（#17）
+
+### 为什么：旧 `noul` 头是第二个 urgency 头
+
+上游 zh-tw 的 `needs_human` 与 zh-bench 的 `escalate` 问的都是「**是否需要人工介入**」，
+而我们的问句是「客户是否提出**退款 / 赔付 / 升级处理**的诉求」。三个 split 的正例率**都是 ~64%**
+（不是旧文档写的「train 65% / test 47%」—— 那个 47% 是 zh-bench 那 34 行），而正例里约 **70%
+连退款 / 赔付 / 升级的字眼都没有**，典型是「我訂的帽子卡在海關，急死我了，請快幫我查清楚！」。
+⇒ 旧的 `noul` 头学到的是「客户是不是在着急」，`0.8513` 是这个意思的数字，不是「退款诉求准确率」。
+
+用户拍板的语义口径（写进 `CONTEXT.md`，标注 / 评测 / 发布文案一律照它）：明说、**升级威胁**、
+**问资格**（`定金能退吗`）都算 `true`（宽松口径）；纯流程 / 规则问句、只有情绪催促算 `false`；
+客户明说「随便问问 / 东西没问题」也算 `false`（那是**没有诉求**，不是问资格）。
+
+### 怎么做：规则标注器 + 人写反例集硬门禁（不用 teacher）
+
+`scripts/label_noul.py`：分级证据阶梯（明说 → 独立诉求 → 追讨已申请 / 已承诺的退款 →
+无名词资格询问 → 择一诉求 → 对象窗口 → 礼貌诉求 → 规则问句 → 无证据）+ **37 条人工反例集**，
+rubric 与反例集不一致就**直接 abort**，不产出数据。关键词基线（`baseline_rules.py`）在这 37 条上
+只答对 **12/37**，说明 rubric 不是同一套关键词。
+
+眼验 + 探针共抓出 7 类真 bug（都固化成反例）：
+
+| # | 形态 | 例子 | 后果 / 修法 |
+| --- | --- | --- | --- |
+| 1 | 订单号被当消协热线 | `123456789` / `#A12345` | 热线的字母数字边界 |
+| 2 | 单字 `查` 误杀 | `我要马上查明跟赔偿` | `LEARN_CUE` 加窗口 |
+| 3 | 疑问形式成片漏报 | `還能退貨嗎` / `可以辦理退貨退款嗎` | 资格窗口含对象本身 |
+| 4 | `我要的是换货` 误判 | 换货 / 補寄 不是我们口径的对象 | 只作择一诉求的配对词 |
+| 5 | 裸 `是要` 误伤 | `退货时赠品…是要一起退还还是直接送我？` | 移出 WILL_CUE |
+| 6 | 追讨已申请退款漏报 | `退款怎么还没到账` / `说好的补偿没消息` | 新增 `REFUND_PENDING` + 学习动词守卫 |
+| 7 | 裸「能退吗」漏报 | `定金能退吗` | 新增 `STANDALONE_ELIGIBILITY` + ±12 字窗口 |
+
+**重标后的分布**（`label_noul.py --in-dir data\adapted_v03 --out-dir data\adapted_v04`）：
+
+| split | 正例率 前 → 后 | true / false | 旧标签多数类 → 新标签多数类 |
+| --- | --- | --- | --- |
+| train 2581 | 0.655 → **0.1999** | 516 / 2065 | 0.655 → **0.8001** |
+| calib 285 | 0.6351 → **0.214** | — | — |
+| test 343 | 0.6356 → **0.2041** | 70 / 273 | 0.6356 → **0.7959** |
+
+三个 split 互相一致 ⇒ 不是 split artifact。**多数类被翻转**（现在「一律答 false」拿 0.796），
+所以 `noul` 的裸准确率从此不可作判据，一律报 balanced accuracy。
+
+### 单变量验证：与 v0.3 只差一个标签字段
+
+`data\adapted_v04\mai_jev_train_balanced.jsonl`（9425 行）与 v0.3 的**逐行 id 顺序、state 文本、
+route_team gold、urgency gold 完全相同**，只有 **4337 行**的 `noul` gold 不同
+（3926 true→false、411 false→true）；`questions` 里的 `instructions` 文本两版相同
+（刻意**只改标签、不改 prompt**）。均衡文件里的 `noul` 正例率是 0.4157（urgency 均衡重采样后的比例，
+不是 0.20）—— 引用时要注意是哪个文件。
+
+⇒ 训练超参与 v0.3 **逐项相同**（`train_config.yaml` 只有路径与 sha 不同），可归因到标签：
+
+```
+python scripts/train_rlcd.py run \
+  --data  $WORK\data\adapted_v04\mai_jev_train_balanced.laya.jsonl   # sha e6e81e3cf2525e05
+  --eval-data $WORK\data\adapted_v04\mai_jev_test.laya.jsonl          # sha 24b9ccfe67f504c4
+  --out $WORK\runs\v04_rlcd_noul --base multilingual --loss rlcd \
+  --epochs 2 --micro-batch 8 --grad-accum 4 --encoder-lr 2.5e-05 --head-lr 0.0001 \
+  --max-len 0 --seed 20261013 --device auto
+```
+
+（v0.3 的对应 sha：train `ccd2ca6cf71b0ec9`、test `e0508bd4dc4c5968`。）
+
+论文里的数字来自这三份评测：
+
+```powershell
+$py='python'; $d='$WORK\data\adapted_v04'
+
+# 1) v0.4 自己：主表 + 置信度分档 + 规则基线 / 多数类 / 原版零样本对照
+& $py scripts\calibrate_eval.py --checkpoint $WORK\runs\v04_rlcd_noul `
+  --calib-data "$d\mai_jev_calib.jsonl" --test-data "$d\mai_jev_test.jsonl" `
+  --baseline-checkpoint convaiinnovations/laya-multilingual `
+  --out $WORK\runs\v04_rlcd_noul\paper_eval
+
+# 2) 旧 v0.3 头 × v0.4 的新标签：量化「旧 0.8513 里有多少是标签定义撑的」
+& $py scripts\calibrate_eval.py --checkpoint $WORK\runs\v03_rlcd_bal `
+  --calib-data "$d\mai_jev_calib.jsonl" --test-data "$d\mai_jev_test.jsonl" `
+  --out $WORK\runs\v03_on_v04
+
+# 3) 37 条人工反例集：只带 noul 一个问题，通用脚本吃不下（缺另外两个原语的 gold）
+& $py scripts\eval_noul_antibody.py --checkpoint $WORK\runs\v04_rlcd_noul `
+  --antibody "$d\mai_jev_noul_antibody.jsonl" `
+  --calibration $WORK\runs\v04_rlcd_noul\paper_eval\calibration.json `
+  --out $WORK\runs\v04_antibody\summary.json
+```
+
+### 结果（test 343 行，标定后；`runs\v04_rlcd_noul\paper_eval\`）
+
+| 原语 | v0.3（旧 noul 标签） | v0.4（新 noul 标签） |
+| --- | --- | --- |
+| route_team acc / bal | 0.9475 / 0.9561 | **0.9300 / 0.9378** |
+| urgency acc / bal | 0.9329 / 0.8009 | **0.9475 / 0.8555** |
+| noul acc / bal | 0.8513 / 0.8506（**旧口径，不可比**） | **0.9300 / 0.8923** |
+| 宏平均 acc | 0.9106 | **0.9359** |
+| 最差单原语 ECE | 0.0871 | **0.1061（超线，见下）** |
+
+新标签下同一批 343 行的基线（`baseline_rules.py` 现在也报 `balanced_accuracy`）：
+
+| 对照 | acc | balanced |
+| --- | --- | --- |
+| 微调后（v0.4） | 0.9300 | **0.8923** |
+| 规则基线关键词表 | 0.8484 | 0.6711 |
+| 多数类（一律 false） | 0.7959 | 0.5000（构造上） |
+| 原版 laya-multilingual 零样本 | 0.7055 | 0.7407 |
+
+⇒ **判据满足**：balanced accuracy 0.8923 显著高于关键词表的 0.6711（+0.22），也高于原版零样本的 0.7407。
+但裸准确率只比关键词表高 0.082 —— 这个原语比旧口径「词汇化」得多，**必须报 balanced**。
+
+### 旧 v0.3 头 × 新标签：0.8513 里有多少是标签定义
+
+`runs\v03_on_v04\`（同一个 v0.3 checkpoint，在 v0.4 的 calib 上重拟合温度、v0.4 的 test 上评）：
+
+| 原语 | acc | balanced |
+| --- | --- | --- |
+| route_team | 0.9475 | 0.9561 |
+| urgency | 0.9329 | 0.8009 |
+| **noul** | **0.4898** | **0.5733** |
+
+⇒ 旧头在新标签上 **0.4898 < 多数类 0.7959**，balanced 0.5733 也低于关键词表 0.6711。
+**旧 0.8513 主要是标签定义撑起来的**：同一个权重，换成诚实的问句就跌到常数基线以下。
+这也解释了为什么「重标 + 重训」是必需的 —— 只重标不重训，等于把一个答错问题的头留在线上。
+
+### 反例集上量模型：一个必须记住的负面结果
+
+`scripts/eval_noul_antibody.py`（37 行手写反例**不在任何 split 里**，`0/37` 出现在
+train / calib / test / balanced 中，是**分布外**的对抗切片）：
+
+| 评分方 | acc | balanced |
+| --- | --- | --- |
+| v0.4 头 | 0.4865 | **0.4583** |
+| v0.3 头（旧 proxy） | 0.5946 | 0.5387 |
+| 规则基线关键词表 | 0.3243 | 0.3080 |
+| 多数类（一律 false） | 0.5676 | 0.5000 |
+
+⇒ 模型在自然 test 上 balanced 0.8923（true 类召回 ~0.8），在**把表面词与语义分开**的 37 行上
+balanced 0.4583（true 类召回 0.25），**低于常数基线**。诚实结论：**标签修好了，学到的概念只修好一半** ——
+2,581 行训练数据足以让头复述新标签的分布，不足以让它学通口径里那些「有字面词却是 false、
+没字面词却是 true」的边界。要真正解决需要更多这样的对抗样本进训练集（或做数据增广），
+这是 #17 之后仍然开着的口子，已写进 model card 的 Limitations。
+
+### ECE 退线：0.1061 > 0.10，且诊断为小样本噪声
+
+| 原语 | 标定前 ECE | 标定后 ECE | 拟合温度 |
+| --- | --- | --- | --- |
+| route_team | 0.0466 | **0.1061** | 1.1057 |
+| urgency | 0.0514 | 0.0237 | 3.1359 |
+| noul | 0.0330 | 0.0707 | 1.2252 |
+
+choice 的 NLL-最优温度把 test 上的平均置信度从 0.898 压到 0.864，而准确率仍是 0.930 ⇒
+ECE 从 0.0466 涨到 0.1061。v0.3 是**同一个方向、几乎同一个温度**（1.1131，0.0527 → 0.0871）：
+285 行 calib 与 343 行 test 的准确率差出几个点，温度迁移不好，**这条「≤0.10」在 n=343 上是噪声级别**，
+v0.4 只是把噪声落在了线的另一侧 0.006。我们**没有**按 test ECE 选温度（那是拿 test 调参）。
+要真正解决得加大 calib 切分或按 ECE 而非 NLL 选温度 —— 那是标定方法学（#6）的改动，不在本票范围内。
+
+### 环境坑：GPU 争用（两次失败的真正原因）
+
+- 第一次训练直接 `CUDA error: out of memory`：8 GB 显存里 **7 GB 被同机 ComfyUI 占着**。
+- 释放后跑到 step 200 又 `CUDA error: unspecified launch failure` —— 用户当时正在跑 1024×1024 生成任务。
+- 用 ComfyUI 自己的 `POST /free`（`{"unload_models":true,"free_memory":true}`，
+  可逆）把占用降到 **180 MiB** 后，训练与导出全部正常。
+- ⇒ **动手训练/导出前先看 `nvidia-smi`**：显存占用 > 2.5 GB 就先谈，不要硬跑。
+
+### 打包链路（v0.4 的 int8 包）没跑通：不是代码问题，是机器内存
+
+- `export_onnx.py` 成功：`laya_fp32.onnx` **1228.60 MB**，eager parity `max|dlogits| 3.3e-06`，
+  且与 v0.3 的导出**字节数完全相同** ⇒ 图结构与参数规模一致，只有 `noul` 头权重变了。
+- `build_export.py` 失败在 onnxruntime 的 `load_model_with_shape_infer` →
+  `onnx.shape_inference.infer_shapes_path`：在 1.2 GB 的图上做形状推理要数 GB 空闲内存，
+  而当时本机**空闲物理内存只剩几个 GB、commit 已接近上限**，它报
+  `MemoryError: bad allocation`，写出半截模型，紧接着 `get_opset_version` 报
+  `Failed to find proper ai.onnx domain`。**那不是 opset 版本问题**（单独跑 `infer_shapes_path`
+  在内存充足时 opset_import 是正常的 `[('', 17)]`），是内存不足的次生症状。
+- 当时的机器状态：ComfyUI 的 python + 一批 `blender-mcp` 进程（另一件活儿）把 commit 占满，
+  PowerShell 自己都起不来（`800705af` = ERROR_COMMITMENT_LIMIT）。
+- ⇒ **动手训练 / 导出 / 评测前先看 `FreePhysicalMemory`，低于 ~6 GB 就先谈**，不要硬跑。
+- 因此论文的打包 / 量化 / 延迟数字**仍标注为 v0.3 包**（论文 §5.2 加了 Version note 说明
+  v0.4 只换 `noul` 头、导出图大小相同），v0.4 的 int8 变体等机器有空闲内存时再补测。
+
+### 评测产物的一次修补（记录在案）
+
+- `baseline_rules.evaluate` 在 #17 才补上 urgency 的 balanced accuracy，而当时已有的两份
+  `calibration_eval.json` 是补之前跑的。规则基线是**纯 CPU、无模型**的确定性函数，所以在同一批
+  test 行上用 `calibrate_eval.gold_label` 复算、只替换 JSON 里 `baseline_rules` 这一个键 ——
+  复算出的 choice / noul 与原有值逐位相同（脚本据此自校验）才写入。
+- 模型侧的评测**没有重跑**（撞上上面那堵内存墙），但 `baseline_rules` 与模型无关，这一步是等价的。
+  顺带量到：urgency 的规则基线均衡准确率只有 **0.2630**，而它的 accuracy（0.5918）比多数类（0.7026）还低 ——
+  关键词表在这个原语上其实很弱，论文 §5.1 把这个反过来的偏斜也写了出来。
+
+### 产物
+
+- 数据：`data\adapted_v04\`（三 split + balanced + `mai_jev_noul_antibody.jsonl` +
+  `relabel_report_noul.json` + `baseline_on_new_labels.txt` + `zhbench_noul_review.md` + `miss_classes_probe.md`）。
+- 训练：`runs\v04_rlcd_noul\`（`train_config.yaml` / `train_report.json` / `model.safetensors`）。
+- 评测：`runs\v04_rlcd_noul\paper_eval\`（论文数字；命令见上「重跑评测」）、`runs\v03_on_v04\`
+  （旧头 × 新标签）、`runs\v04_antibody\summary.json`（反例集，`eval_noul_antibody.py --out`）。
+- 论文：`paper/mai-jev.tex` + `paper/generated/`（宏由 `make_paper_tables.py` 从上面这些 JSON 生成；
+  v0.4 需要 `--noul-json` / `--noul-oldhead-json` / `--antibody-json` 三个新入参）。
+
+

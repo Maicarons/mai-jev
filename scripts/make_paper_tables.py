@@ -104,6 +104,12 @@ def main() -> None:
     ap.add_argument("--train-json", default="runs/paper_eval/train_report.json")
     ap.add_argument("--bench-json", default="export/v03_bench_final.json")
     ap.add_argument("--data-json", default="data/adapted_v03/relabel_report.json")
+    ap.add_argument("--noul-json", default=None,
+                    help="#17 的 noul 重标报告（relabel_report_noul.json）；给了才产出 noul 口径宏")
+    ap.add_argument("--noul-oldhead-json", default=None,
+                    help="旧 checkpoint 在**新** noul 标签上的评测 JSON（runs/v03_on_v04/calibration_eval.json）")
+    ap.add_argument("--antibody-json", default=None,
+                    help="人工反例集成绩（scripts/eval_noul_antibody.py --out 的产物）")
     ap.add_argument("--balanced-data", default="data/adapted_v03/mai_jev_train_balanced.laya.jsonl")
     ap.add_argument("--build-json", default="data/adapted/build_report.json")
     ap.add_argument("--latency-report", default="docs/research/v03-latency.md",
@@ -175,6 +181,17 @@ def main() -> None:
         m.add(f"T{key}", num(temps[i], 4), f"{args.eval_json}:temperature[{i}]")
     for i, (key, prim) in enumerate(zip(("Choice", "Score", "Noul"), PRIMS)):
         m.add(f"RulesAcc{key}", num(rules[prim]["accuracy"]), f"{args.eval_json}:baseline_rules.{prim}")
+        if "balanced_accuracy" not in rules[prim]:
+            # noul 的多数类被翻转（全猜 false 就有 0.796），论文拿 balanced accuracy 才裁得动它，
+            # 缺这一项宁可在这里失败也不要印一个缺项的数字。其余两个原语的规则基线 balanced
+            # 只是补充信息（`baseline_rules.py` 在 #17 才补上这一项），缺了就跳过。
+            if prim == "needs_refund_or_escalation":
+                raise SystemExit(
+                    f"{args.eval_json}:baseline_rules.{prim} 缺少 balanced_accuracy —— "
+                    "这是旧版 calibrate_eval.py 的产物，请用新版重跑评测（#17）。")
+        else:
+            m.add(f"RulesBAcc{key}", num(rules[prim]["balanced_accuracy"], 4),
+                  f"{args.eval_json}:baseline_rules.{prim}.balanced_accuracy")
         m.add(f"MajAcc{key}", num(majority[prim]), f"{args.eval_json}:baseline_majority_class.{prim}")
         orig_acc = {p: original[p]["accuracy"] for p in PRIMS if p in original}
         m.add(f"OrigAcc{key}", num(orig_acc.get(prim, float("nan"))),
@@ -296,6 +313,51 @@ def main() -> None:
         v03_score = float(num(after["urgency"]["accuracy"]))
         m.add("DeltaUrg", num(v03_score - v02_score, 4),
               "v03 与 v02 的 urgency 准确率之差（proxy 标签修复的净收益）")
+
+    # ---- noul 重标（#17 → v0.4）：口径变了，正例率 / 多数类 / 反例集规模都要进论文数字 ----
+    if args.noul_json:
+        nj = load(Path(args.noul_json))
+        nsp = nj["splits"]
+        m.add("NoulPosBefore", num(nsp["train"]["true_rate_before"], 4),
+              f"{args.noul_json}:train.true_rate_before（旧 proxy 标签）")
+        m.add("NoulPosTrainAfter", num(nsp["train"]["true_rate_after"], 4),
+              f"{args.noul_json}:train.true_rate_after（规则重标后）")
+        m.add("NoulPosTestAfter", num(nsp["test"]["true_rate_after"], 4),
+              f"{args.noul_json}:test.true_rate_after（规则重标后）")
+        m.add("NoulPosTestBefore", num(nsp["test"]["true_rate_before"], 4),
+              f"{args.noul_json}:test.true_rate_before（旧 proxy 标签，test 侧）")
+        m.add("NoulMajTestAfter", num(nsp["test"]["majority_baseline_after"], 4),
+              f"{args.noul_json}:test.majority_baseline_after")
+        m.add("NoulAntibodyN", str((nj.get("antibody") or {}).get("rows", "")),
+              f"{args.noul_json}:antibody.rows（人工反例集规模）")
+        ndiv = re.match(r"(\d+)\s*/\s*(\d+)", str((nj.get("selfcheck") or {}).get("divergence", "")))
+        if ndiv:
+            m.add("NoulGateDisagree", ndiv.group(1),
+                  f"{args.noul_json}:selfcheck.divergence 分子（规则基线答错的条数）")
+
+    # ---- 旧 v03 头在**新标签**上的成绩（runs/v03_on_v04）：0.8513 里有多少是标签定义撑的 ----
+    if args.noul_oldhead_json:
+        oh = load(Path(args.noul_oldhead_json))
+        ohn = oh["test_after_calibration"]["noul"]
+        m.add("OldHeadAccNoul", num(ohn["accuracy"], 4),
+              f"{args.noul_oldhead_json}:test_after.noul.accuracy（旧 proxy 头 × 新标签）")
+        m.add("OldHeadBAccNoul", num(ohn["balanced_accuracy"], 4),
+              f"{args.noul_oldhead_json}:test_after.noul.balanced_accuracy")
+
+    # ---- 人工反例集上的三个对照（eval_noul_antibody.py 的 --out）----
+    if args.antibody_json:
+        ab = load(Path(args.antibody_json))
+        m.add("AntibodyN", str(ab["rows"]), f"{args.antibody_json}:rows")
+        m.add("AntibodyAcc", num(ab["model"]["accuracy"], 4),
+              f"{args.antibody_json}:model.accuracy")
+        m.add("AntibodyBAcc", num(ab["model"]["balanced_accuracy"], 4),
+              f"{args.antibody_json}:model.balanced_accuracy")
+        m.add("AntibodyRulesAcc", num(ab["rules"]["accuracy"], 4),
+              f"{args.antibody_json}:rules.accuracy")
+        m.add("AntibodyRulesBAcc", num(ab["rules"]["balanced_accuracy"], 4),
+              f"{args.antibody_json}:rules.balanced_accuracy")
+        m.add("AntibodyMajAcc", num(ab["majority_class"]["accuracy"], 4),
+              f"{args.antibody_json}:majority_class.accuracy")
 
     # ---- 数据集自检（relabel_report.json）----
     if "selfcheck" in rel:

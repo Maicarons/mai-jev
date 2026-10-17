@@ -94,6 +94,17 @@ def _labels_from_row(row: dict) -> dict:
     return row["labels"]
 
 
+def _balanced(gold_counts: dict, gold_hits: dict) -> float:
+    """每类召回率的宏平均（balanced accuracy）。
+
+    多数类被翻转后 accuracy 会奖励「永远猜多数类」：v0.4 的 noul 正例只剩 20.4%，
+    一个全猜 false 的模型拿 0.796。所以 noul 必须看这一项。
+    """
+    if not gold_counts:
+        return 0.0
+    return sum(gold_hits.get(k, 0) / n for k, n in gold_counts.items()) / len(gold_counts)
+
+
 def evaluate(rows: list[dict], gold_labels=None) -> dict:
     """规则基线评测。
 
@@ -107,36 +118,60 @@ def evaluate(rows: list[dict], gold_labels=None) -> dict:
     urg_total = urg_hit = urg_off_by_one = 0
     noul_total = noul_hit = 0
     confusions: dict[str, dict[str, int]] = {}
+    route_gold: dict[str, int] = {}
+    route_gold_hit: dict[str, int] = {}
+    urg_gold: dict[str, int] = {}
+    urg_gold_hit: dict[str, int] = {}
+    noul_gold: dict[str, int] = {}
+    noul_gold_hit: dict[str, int] = {}
     for row in rows:
         gold = gold_labels(row)
         pred = predict_all(row["state"])
 
         route_total += 1
+        route_gold[gold["route_team"]] = route_gold.get(gold["route_team"], 0) + 1
         if pred["route_team"] == gold["route_team"]:
             route_hit += 1
+            route_gold_hit[gold["route_team"]] = route_gold_hit.get(gold["route_team"], 0) + 1
         confusions.setdefault(gold["route_team"], {}).setdefault(pred["route_team"], 0)
         confusions[gold["route_team"]][pred["route_team"]] += 1
 
         urg_total += 1
+        urg_gold[gold["urgency"]] = urg_gold.get(gold["urgency"], 0) + 1
         if pred["urgency"] == gold["urgency"]:
             urg_hit += 1
+            urg_gold_hit[gold["urgency"]] = urg_gold_hit.get(gold["urgency"], 0) + 1
         if abs(pred["urgency"] - gold["urgency"]) <= 1:
             urg_off_by_one += 1
 
+        # noul：gold 是 "true"/"false" 字符串、预测是 bool，两边都归一化成小写字符串。
         noul_total += 1
-        if pred["needs_refund_or_escalation"] == gold["needs_refund_or_escalation"]:
+        g = str(gold["needs_refund_or_escalation"]).lower()
+        noul_gold[g] = noul_gold.get(g, 0) + 1
+        if str(pred["needs_refund_or_escalation"]).lower() == g:
             noul_hit += 1
+            noul_gold_hit[g] = noul_gold_hit.get(g, 0) + 1
 
     return {
         "n": len(rows),
-        "route_team": {"accuracy": route_hit / max(1, route_total), "n": route_total},
+        "route_team": {
+            "accuracy": route_hit / max(1, route_total),
+            "balanced_accuracy": _balanced(route_gold, route_gold_hit),
+            "n": route_total,
+        },
         "urgency": {
             "accuracy": urg_hit / max(1, urg_total),
+            "balanced_accuracy": _balanced(urg_gold, urg_gold_hit),
             "off_by_one": urg_off_by_one / max(1, urg_total),
             "n": urg_total,
         },
-        "needs_refund_or_escalation": {"accuracy": noul_hit / max(1, noul_total), "n": noul_total},
+        "needs_refund_or_escalation": {
+            "accuracy": noul_hit / max(1, noul_total),
+            "balanced_accuracy": _balanced(noul_gold, noul_gold_hit),
+            "n": noul_total,
+        },
         "route_confusion": confusions,
+        "noul_gold_dist": noul_gold,
     }
 
 

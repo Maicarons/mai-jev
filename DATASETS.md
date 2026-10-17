@@ -105,23 +105,63 @@ boundary 378）与三个人工校验比率字段。
 |---|---|---|---|
 | `route_team` | `gold.route`（4 团队） | `物流配送→售后`, `退换售后→售后`, `支付问题→账务`, `账户安全→技术支持` | **direct** |
 | `urgency` | `gold.urgency`（3 级） | `不紧急→1`, `一般→3`, `紧急→5` | **direct** |
-| `needs_refund_or_escalation` | `gold.escalate` | 布尔直传 | **direct** |
+| `needs_refund_or_escalation` | `gold.escalate` | 布尔直传 | **direct（人工 gold，但不是我们那个问题）** |
 
 **这 34 行绝不进 train/calib**，是唯一带完整人工 gold 的 held-out 集，
 供 issue [#6](https://github.com/Maicarons/mai-jev/issues/6) 判「中文准确率超过原版」用。
 分布：route `退换售后 13 / 物流配送 10 / 支付问题 8 / 账户安全 3`；
 urgency `一般 21 / 紧急 9 / 不紧急 4`；escalate `True 16 / False 18`。
 
+> ⚠️ **这一行曾是全文件最容易被误读的地方**：本节的 `direct` 说的是「人工审定、直传，没有经过
+> 我们的映射」，而 §3 第 1 条说的是「它问的是**是否需要人工介入**，不是我们那句话」。两句都对，
+> 合起来的意思是：**字段是人工 gold，但它答的不是我们这个问题**。
+> v0.4（[#17](https://github.com/Maicarons/mai-jev/issues/17)）起这 34 行的 `noul` 改由
+> `scripts/label_noul.py` 重标，所以「唯一完整人工 gold」这句话对 `noul` 已经不成立
+> （`route_team` / `urgency` 仍是人工 gold）。34 行的逐行复核表在
+> `$WORK\data\adapted_v04\zhbench_noul_review.md`。
+
 同文件里 `content_moderation` 的 21 行只带 `scam`/`escalate`，无法映射，丢弃。
 
 ## 3. 已知偏差（读这一节再相信上面的分布）
 
-1. **`noul` 语义偏移**。zh-tw 的 `needs_human` 是「是否需要人工介入」，
-   zh-bench 的 `escalate` 是「是否需要人工介入」，
+1. **`noul` 语义偏移 —— v0.4 已修**（[#17](https://github.com/Maicarons/mai-jev/issues/17)）。
+   上游 zh-tw 的 `needs_human` 与 zh-bench 的 `escalate` 问的都是「**是否需要人工介入**」，
    而我们的问句是「客户是否**明确要求**退款、赔付或升级处理」。
-   前者包含「信息不足需补充」等非退款/升级场景。后果：
-   训练集里 `noul` 正例占 **65%**（2,089/3,209），而评测集只有 **47%**（16/34），
-   模型会有向 true 偏的先验。
+   前者描述**运营动作**（这条要不要人接手），后者描述**客户诉求**。
+   后果（2026-10-17 实测）：三个 split 的 `noul` 正例率都是 ~64%，而正例里
+   **70% 连退款/赔付/升级的字眼都没有** —— 典型如「我訂的帽子卡在海關，急死我了，
+   請快幫我查清楚！」。它们共同的特征是「客户着急、要有人处理」，正是 `needs_human` 的定义。
+   ⇒ 旧的 `noul` 头基本是**第二个 urgency 头**，0.8513 衡量的更像「客户是否在着急」。
+
+   （顺带纠正一处旧表述：原来说「评测集只有 47%」，那个 47% 是 **zh-bench 那 34 行**，
+   不是 zh-tw 的 test split —— zh-tw 的 calib/test 同样是 ~64%。）
+
+   v0.4 的修法（**不使用任何外部 API、不用 teacher，纯规则可复现**，照 #16 的先例）：
+
+   - `scripts/label_noul.py`：分级证据标注器，按「明确提出诉求 / 升级要求或威胁 /
+     资格或意向询问 / 追讨已申请或已承诺的退款 / 纯问流程·规则 / 只有情绪催促」分级。
+     语义口径由用户拍板：**问资格算有意向（宽松）**、**升级威胁算要求升级**；
+     唯一例外是客户明说「随便问问 / 好奇 / 东西没问题」的句子判 false
+     （那不是「问资格」，是**没有诉求**）。
+   - **自证机制**：脚本同时导出 37 条**人工反例集**（关键词命中但判定应当相反的句子），
+     并把它做成硬门禁 —— rubric 与反例集不一致就直接 abort，不产出数据。
+     关键词基线在这 37 条上只答对 12 条，说明 rubric 不是同一套关键词。
+   - 重标后正例率 **0.655 → 0.200**（train）／0.214（calib）／0.204（test），
+     三个 split 互相一致，不是 split artifact。
+
+   ⚠️ **重标带来两个必须记住的后果**：
+
+   - **多数类翻转**：新 test 的正例只占 20.4%，多数类基线（一律答 false）= **0.796**，
+     所以 `noul` 的**裸准确率不再可作判据**，必须报 **balanced accuracy**（口径见 `CONTEXT.md`）。
+   - **新旧数字不可比**：0.8513（v0.3）与 v0.4 的 `noul` 分数是**两个不同标签定义下的数字**，
+     发布页/README/model card 不能把它当涨点宣传。指标见 `docs/research/RUNS.md` 的 v0.4 条目。
+
+   **已知残余**（诚实交代）：规则标注器的分辨率有上限。判 false 的 2,562 行里 160 行
+   （6.2%）提到了退款/投诉词（都是阶梯**主动**否掉的）；抽样看绝大多数是正当的规则询问
+   （退运费 / 流程 / 期限 / 条件）。最大的一个口径边界是「**金额异常**」家族
+   （`被扣款` / `多扣了钱` / `重复扣款`，train 112 行）：客户要的是**调查**（`帮我查一下`），
+   不是明确要求退款，属 `账务` 团队的活，故判 false。这点与「投诉威胁归 noul、
+   投诉流程归 route_team」是同一种分界逻辑。
 2. **`urgency` 语义偏移 —— v0.3 已修**（[#16](https://github.com/Maicarons/mai-jev/issues/16)）。
    v0.2 的 `emotion_intensity` 测的是**情绪强度**（1..5），我们的 `urgency` 是
    **业务紧急度**。两者 1..5 同序但不同义：一个愤怒但无时限要求的工单，
@@ -133,7 +173,9 @@ urgency `一般 21 / 紧急 9 / 不紧急 4`；escalate `True 16 / False 18`。
    - `scripts/label_urgency.py`：分级证据标注器，按「时间要求 / 业务影响 /
      期限」三类证据给 1–5 级。它刻意强于 `scripts/baseline_rules.py` 的关键词
      规则（多类证据累积、负向证据消解、冲突时取更高等级），否则模型只会学会
-     复述规则基线。**只覆盖 urgency 这一维**，route_team 与 noul 沿用 v0.2 标签。
+     复述规则基线。**v0.3 时只覆盖 urgency 这一维**，route_team 与 noul 沿用 v0.2 标签；
+     其中 **noul 已在 v0.4 由 `scripts/label_noul.py` 补上**（见本节第 1 条），
+     `route_team` 仍沿用 v0.2 标签。
    - `scripts/balance_urgency.py`：重采样把训练集的等级分布拉平，消除偏斜先验。
 
    实测收益（`$WORK\runs\v03_rlcd_bal`，独立 test split 1029 items）：
@@ -151,9 +193,15 @@ urgency `一般 21 / 紧急 9 / 不紧急 4`；escalate `True 16 / False 18`。
 5. **`售后` 占 32%**（1,033/3,209），因为 zh-tw 的 `商品諮詢` + `物流查詢`
    共 1,000 行都映射到它，而这两个类别其实更像「一般咨询」而非「售后」。
 
-**这些偏差是 v0.2 的已知上限**，不是 bug。要消解它们需要教师模型合成
+**这些偏差是 v0.2 的已知上限**，不是 bug。要消解它们有两条路：教师模型合成
 （issue [#4](https://github.com/Maicarons/mai-jev/issues/4) 报告 6.3 节的方案），
-或改标签定义 —— 两者都超出本票范围，已记录在 map #1 的迷雾区。
+或**改标签定义**。后者已经走了两次，且都没有用 teacher，是**纯规则、可复现**的：
+
+- `urgency`（#16 → v0.3）：规则证据分级器 + 重平衡；
+- `noul`（#17 → v0.4）：规则标注器 + 37 条反例集硬门禁。
+
+剩下的 `route_team` 覆盖不均（第 3 条）与 `售后` 占比过高（第 5 条）仍未解，
+记录在 map #1 的迷雾区。
 
 ## 4. 署名声明（发布 model card / README 时照抄）
 
@@ -209,6 +257,9 @@ route_team                  urgency                    needs_refund_or_escalatio
 ```
 
 `urgency` 近乎均匀，是因为上游 `emotion_intensity` 本身就是均匀采样的。
+（上表的 `noul` 一列是 **v0.2/v0.3** 的分布。v0.4 起 `noul` 由
+`scripts/label_noul.py` 重标：true 2,089 (65.1%) → **647 (20.2%)**，
+理由与两个后果见 §3 第 1 条。`route_team` / `urgency` 两列不受影响。）
 
 ### 5.3 选项基数
 

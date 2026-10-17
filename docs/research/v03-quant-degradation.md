@@ -29,6 +29,13 @@ argmax 准确率退化是 route_team **0.0000**、urgency **0.0058**、needs_ref
 | urgency | 0.8017 | 0.7959 | **0.0058** | 0.0716 | 0.9942 |
 | needs_refund_or_escalation | 0.8513 | 0.8484 | **0.0029** | 0.0884 | 0.9971 |
 
+> ⚠️ 本文所有 `needs_refund_or_escalation` 的绝对值（0.8513 / 0.8484）都取自 **v0.3 标签
+> 定义**，而那个标签已被证伪为一条 proxy（问的是「是否需要人工介入」而不是客户诉求，
+> 见 `DATASETS.md` §3 第 1 条与 [#17](https://github.com/Maicarons/mai-jev/issues/17)）。
+> 作为**量化退化**的对照它们仍然有效（fp32 与 int8 用同一份 gold、同一口径比较），
+> 但**不可以**当成「退款诉求准确率」对外引用；v0.4 重标后 noul 的多数类基线变成 0.796，
+> 裸准确率跨版本不可比。
+
 int8 相对 fp32 ONNX 翻转的样本（共 3 行）：urgency `zhtw-train-01750`（0→1）、
 `zhbench-bs-00021`（1→0）；needs_refund `zhtw-train-01658`（false→true）。
 

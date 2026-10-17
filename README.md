@@ -44,7 +44,7 @@ python tools/smoke_laya.py
 
 ## 复现训练
 
-每一步的实测输出与踩坑记在 [docs/research/RUNS.md](docs/research/RUNS.md)；论文里的每个数字都能由这些脚本再生（`scripts/make_paper_tables.py` + `scripts/check_numbers.py`）。以 v0.3 为例：
+每一步的实测输出与踩坑记在 [docs/research/RUNS.md](docs/research/RUNS.md)；论文里的每个数字都能由这些脚本再生（`scripts/make_paper_tables.py` 从各 run 的评测报告直接生成表格）。以 v0.3 / v0.4 为例：
 
 ```bash
 $env:PYTHONIOENCODING='utf-8'   # Windows 控制台必须，否则中文乱码
@@ -52,11 +52,23 @@ $env:PYTHONIOENCODING='utf-8'   # Windows 控制台必须，否则中文乱码
 # ① 数据：原始数据集 → 三原语 jsonl（train / calib / test）
 python scripts/build_dataset.py --raw <原始数据目录> --out $WORK\data --write
 
-# ② 紧急度重标 + 重平衡（#16）：规则证据分级器给 score 合成语义正确的标签
+# ② 紧急度重标 + 重平衡（#16 → v0.3）：规则证据分级器给 score 合成语义正确的标签
 python scripts/label_urgency.py  --in-dir $WORK\data --out-dir $WORK\data\adapted_v03
 python scripts/balance_urgency.py --in-dir $WORK\data\adapted_v03 \
     --out $WORK\data\adapted_v03\mai_jev_train_balanced.laya.jsonl
 
+# ②b 诉求重标（#17 → v0.4）：noul 语义偏移的修法。规则标注器给「是否要求退款/赔付/升级」
+#     合成标签，并同时导出 37 条反例集；rubric 与人写反例集不一致会**直接 abort**，不产出数据。
+python scripts/label_noul.py --in-dir $WORK\data\adapted_v03 \
+    --out-dir $WORK\data\adapted_v04
+python scripts/balance_urgency.py --in-dir $WORK\data\adapted_v04 \
+    --out $WORK\data\adapted_v04\mai_jev_train_balanced.laya.jsonl
+```
+
+v0.4 的 ③④⑤ 与下面完全一样，只把数据目录从 `adapted_v03` 换成 `adapted_v04`、
+run 名换成 `v04_rlcd_noul`（其余超参逐项相同，包括 seed）。
+
+```bash
 # ③ RLCD 微调：run 结束会把超参 + 数据 sha256 + 显存峰值写进 runs/<id>/train_config.yaml
 python scripts/train_rlcd.py run \
     --data $WORK\data\adapted_v03\mai_jev_train_balanced.laya.jsonl \
@@ -107,12 +119,23 @@ python scripts/verify_published_model.py --source modelscope
 | #15 | 撰写 arXiv 格式论文（数字全部可再生） | ✅ closed（`paper/`） |
 | #10 | 仓库基建：CONTEXT.md / ADR / README / DATASETS.md | ✅ closed |
 | #5 | 发布到 HF 与 ModelScope | ✅ closed（两地均上线，`verify_published_model.py` 双源通过） |
+| #17 | 修 `noul` 语义偏移（规则重标 + 重训 v0.4） | ✅ closed（v0.4 均衡 0.8923 vs 关键词表 0.6711；旧头在新标签上 0.4898；反例集 0.4583 如实记） |
 
 ## 验收线
 
 - 准确率：held-out test（343 行，从未参与训练或标定）宏平均 **0.9106** = route_team 0.9475 / urgency 0.9329 / noul 0.8513。
-- **ECE ≤ 0.10**：每个变体在**自己的 calib 切分**上重拟合温度后，torch 最差 0.0871、int8 最差 0.0927。
-- **中文场景优于原版**：宏平均 0.4052（原版 `laya-multilingual` 零样本）→ 0.9106；规则基线 0.4373/0.5918/0.4111、多数类 0.3586/0.7026/0.6356。
+  ⚠️ 其中 `noul` 的 0.8513 是 **v0.3 标签口径**下的数字，而那个标签是条 proxy（问「是否需人工介入」，不是客户诉求）；
+  v0.4（[#17](https://github.com/Maicarons/mai-jev/issues/17)）已重标，**两个口径的 noul 分数不可比较**，见 `DATASETS.md` §3 第 1 条。
+- 准确率（v0.4，同一批 343 行、同一 seed、超参与 v0.3 逐项相同，只换了 `noul` 标签）：宏平均 **0.9359**
+  = route_team 0.9300 / urgency 0.9475 / noul **0.9300**。`noul` 重标后正例率 0.655 → 0.204，多数类被翻转到 0.7959，
+  所以该原语**改看均衡准确率**：模型 **0.8923** vs 关键词表 0.6711、原版 laya 零样本 0.7055。
+  旧 v0.3 头在**新标签**上只有 **0.4898**（均衡 0.5733，低于多数类）—— 旧 0.8513 主要是标签定义撑起来的。
+  ⚠️ 诚实边界：37 条人写反例集（不在任何 split 里）上 v0.4 头均衡 **0.4583**，低于「一律答 false」的 0.5 ——
+  标签修好了，学到的概念只修好一半，`noul` 目前按**复核**用，不自动执行。
+- **ECE ≤ 0.10**：每个变体在**自己的 calib 切分**上重拟合温度后，torch 最差 0.0871、int8 最差 0.0927（均为 v0.3 口径）。
+  ⚠️ v0.4 的 torch 最差单原语 ECE 是 **0.1061（route_team），超线**：route 的 NLL 最优温度把 test 置信度从 0.898 压到 0.864
+  而准确率不变，ECE 0.0466 → 0.1061；v0.3 同一方向、温度几乎相同，说明 343 行上这条线由抽样噪声决定。**如实报 miss，不按 test ECE 调温**。
+- **中文场景优于原版**：宏平均 0.4052（原版 `laya-multilingual` 零样本）→ 0.9106；规则基线 0.4373/0.5918/0.4111、多数类 0.3586/0.7026/0.6356（同为 v0.3 标签口径；重标后 noul 的规则基线变成 0.8484 / 均衡 0.6711、多数类 0.796）。
 - 靶机：常驻内存 ≤1GB ✅（int8-gather 796MB）；延迟口径为「一条工单跑完三原语合计 **p50 < 500ms**」——训练机上端到端实测 **p50 421–499ms / p95 862–976ms**（n=150，两次复测）。**余量很小，且真实靶机只会更慢，复测前不作为稳定达标宣称**。原「单问题 p50 < 50ms」口径已由 #9 作废，保留给未来 ≤500MB 蒸馏档位。
 
 ## 环境要点（Windows / 双盘）

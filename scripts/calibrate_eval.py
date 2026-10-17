@@ -37,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from mai_jev.questions import QUESTION_ORDER, SCORE_OFFSET  # noqa: E402
+from mai_jev.questions import QUESTION_ORDER, SCORE_OFFSET, label_space  # noqa: E402
 from baseline_rules import evaluate as evaluate_rules, load_jsonl  # noqa: E402
 
 # 置信度三档（ticket #6 第 2 条）
@@ -346,6 +346,25 @@ def main() -> None:
 
     lines += ["## 4. 对照组（test split，标定后温度）", "", md_table(compare), ""]
 
+    # 均衡准确率对照（v0.4 起 noul 的多数类被翻转，accuracy 会奖励「全猜多数类」）。
+    # 多数类基线在均衡准确率下是**构造性**的 1/类别数：全猜一类 → 该类召回 1、其余 0。
+    qid_of = {"choice": "route_team", "score": "urgency", "noul": "needs_refund_or_escalation"}
+
+    def bal_row(label: str, get) -> list:
+        out = [label]
+        for q in ("choice", "score", "noul"):
+            v = get(q)
+            out.append(f"{v:.4f}" if isinstance(v, float) else "-")
+        return out
+
+    bal = [["模型 / 基线", "route_team", "urgency", "noul"],
+           bal_row("本次微调（标定后）", lambda q: (after.get(q) or {}).get("balanced_accuracy")),
+           bal_row("规则基线 scripts/baseline_rules.py",
+                   lambda q: ((rules.get(qid_of[q]) or {}).get("balanced_accuracy"))),
+           bal_row("多数类基线（构造上 = 1/类别数）",
+                   lambda q: 1.0 / len(label_space(qid_of[q])))]
+    lines += ["**均衡准确率**（每类召回率的宏平均；类别偏斜时这才是判据）", "", md_table(bal), ""]
+
     verdict = []
     overall_after = sum(after[q]["accuracy"] for q in after) / max(len(after), 1)
     worst_ece = max(after[q]["ece"] for q in after)
@@ -362,6 +381,14 @@ def main() -> None:
         verdict.append(f"- {name_of[q]}：{after[q]['accuracy']:.4f} vs 规则基线 "
                        f"{rb.get('accuracy', float('nan')):.4f} → "
                        f"{'达标' if after[q]['accuracy'] > rb.get('accuracy', 1) else '未达标'}")
+    # noul 的多数类在 v0.4 被翻转（正例只剩 ~20%），accuracy 会奖励「全猜 false」，
+    # 所以额外按均衡准确率裁一次 —— 这一条才是有意义的那条。
+    rb_noul = (rules.get("needs_refund_or_escalation") or {}).get("balanced_accuracy")
+    if rb_noul is not None and after.get("noul"):
+        b_noul = after["noul"]["balanced_accuracy"]
+        verdict.append(f"- **noul 均衡准确率**：{b_noul:.4f} vs 规则基线 {rb_noul:.4f} → "
+                       f"{'优于' if b_noul > rb_noul else '未优于'}关键词表"
+                       f"（多数类翻转后 accuracy 不是判据）")
     lines += ["## 5. 裁决", ""] + verdict + [""]
 
     report = out_dir / "eval_report.md"
