@@ -73,23 +73,23 @@
 \newcommand{\ReviewAccNoul}{0.9300}  % runs/v04_rlcd_noul/paper_eval/calibration_eval.json:test_after.needs_refund_or_escalation.tiers[review0.6-0.9].accuracy
 \newcommand{\HumanCovNoul}{0.0000}  % runs/v04_rlcd_noul/paper_eval/calibration_eval.json:test_after.needs_refund_or_escalation.tiers[human<0.6].coverage
 \newcommand{\HumanAccNoul}{0.0000}  % runs/v04_rlcd_noul/paper_eval/calibration_eval.json:test_after.needs_refund_or_escalation.tiers[human<0.6].coverage 为 0，该档无样本，命中率记 0
-\newcommand{\BenchThreads}{4}  % export/v03_bench_final.json:threads
-\newcommand{\BenchN}{150}  % export/v03_bench_final.json:n
-\newcommand{\BenchMaxLen}{256}  % export/v03_bench_final.json:max_len
-\newcommand{\LatPFiveZero}{498.65}  % export/v03_bench_final.json:latency_ms.p50（三原语合计）
-\newcommand{\LatPNineFive}{975.58}  % export/v03_bench_final.json:latency_ms.p95
-\newcommand{\LatMean}{583.81}  % export/v03_bench_final.json:latency_ms.mean
-\newcommand{\RssMb}{795.4}  % export/v03_bench_final.json:rss_after_load_MB
-\newcommand{\RssPeakMb}{813.2}  % export/v03_bench_final.json:rss_peak_MB
-\newcommand{\LoadS}{3.87}  % export/v03_bench_final.json:load_seconds
+\newcommand{\BenchThreads}{4}  % export/v04/bench_final.json:threads
+\newcommand{\BenchN}{150}  % export/v04/bench_final.json:n
+\newcommand{\BenchMaxLen}{256}  % export/v04/bench_final.json:max_len
+\newcommand{\LatPFiveZero}{349.72}  % export/v04/bench_final.json:latency_ms.p50（三原语合计）
+\newcommand{\LatPNineFive}{432.75}  % export/v04/bench_final.json:latency_ms.p95
+\newcommand{\LatMean}{348.46}  % export/v04/bench_final.json:latency_ms.mean
+\newcommand{\RssMb}{796.9}  % export/v04/bench_final.json:rss_after_load_MB
+\newcommand{\RssPeakMb}{815.4}  % export/v04/bench_final.json:rss_peak_MB
+\newcommand{\LoadS}{3.20}  % export/v04/bench_final.json:load_seconds
 \newcommand{\ModelMb}{666.0}  % quant_report.json:model_mb
 \newcommand{\FpThreeTwoMb}{1228.6}  % quant_report.json:fp32_model_mb
-\newcommand{\QuantDeltaChoice}{0.0000}  % quant_report.json:degradation.route_team
-\newcommand{\QuantDeltaScore}{-0.0029}  % quant_report.json:degradation.urgency
-\newcommand{\QuantDeltaNoul}{0.0029}  % quant_report.json:degradation.needs_refund_or_escalation
-\newcommand{\TChoiceOnnx}{1.1126}  % export/v03-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
-\newcommand{\TScoreOnnx}{3.6829}  % export/v03-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
-\newcommand{\TNoulOnnx}{1.4678}  % export/v03-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\QuantDeltaChoice}{-0.0029}  % quant_report.json:degradation.route_team
+\newcommand{\QuantDeltaScore}{0.0000}  % quant_report.json:degradation.urgency
+\newcommand{\QuantDeltaNoul}{0.0000}  % quant_report.json:degradation.needs_refund_or_escalation
+\newcommand{\TChoiceOnnx}{1.1027}  % export/v04-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\TScoreOnnx}{3.1577}  % export/v04-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
+\newcommand{\TNoulOnnx}{1.2217}  % export/v04-int8-ml256/calibration.json:temperature（在该变体图上重拟合）
 \newcommand{\QuantWholeMb}{308.6}  % bench_report.json:int8_full_graph_per_channel.size_mb
 \newcommand{\QuantWholeMaxD}{2.312}  % bench_report.json:int8_full_graph_per_channel.max_dlogit 的最大值
 \newcommand{\QuantGatherMaxD}{0.1051}  % bench_report.json:int8_gather_only.max_dlogit 的最大值
@@ -98,18 +98,23 @@
 \newcommand{\ThreadsTEight}{332.0}  % bench_report.json:thread_scaling[threads=8].p50_ms
 \newcommand{\FpThreeTwoRssMb}{1361.3}  % bench_report.json:fp32 变体的 rss_after_load_mb
 \newcommand{\ParityTokMismatch}{0 / 120}  % bench_report.json:parity.token_id_mismatch
-\newcommand{\StateOnlyMs}{283.1}  % docs\research\v03-latency.md:state 预算为 0（完全不读工单）时三原语合计 p50
-\newcommand{\StateFullMs}{383.6}  % docs\research\v03-latency.md:state 预算满时三原语合计 p50
-\newcommand{\BatchMergedMs}{824.9}  % docs\research\v03-latency.md:batch=3 合并成一次前向的 p50
-\newcommand{\BatchSeparateMs}{748.0}  % docs\research\v03-latency.md:三次 batch=1 各自前向的合计 p50
-\newcommand{\HeadLenChoice}{109}  % docs\research\v03-latency.md:route_team 的 head token 长度
-\newcommand{\HeadLenScore}{110}  % docs\research\v03-latency.md:urgency 的 head token 长度
-\newcommand{\EceOnnxChoice}{0.0870}  % export/v03_int8_calib_report.json:test_by_qtype.choice.ece_after（在 int8 图上标定后）
-\newcommand{\EceOnnxScore}{0.0300}  % export/v03_int8_calib_report.json:test_by_qtype.score.ece_after（在 int8 图上标定后）
-\newcommand{\EceOnnxNoul}{0.0927}  % export/v03_int8_calib_report.json:test_by_qtype.noul.ece_after（在 int8 图上标定后）
-\newcommand{\EceWorstOnnx}{0.0927}  % export/v03_int8_calib_report.json:worst_ece_after（三原语里最大的标定后 ECE）
-\newcommand{\AccOnnxScore}{0.9359}  % export/v03_int8_calib_report.json:test_by_qtype.score.accuracy（部署变体自身的 test 准确率）
-\newcommand{\CalibRecords}{855}  % export/v03_int8_calib_report.json:calib_records
+\newcommand{\StateOnlyMs}{243.6}  % docs\research\v04-latency.md:state 预算为 0（完全不读工单）时三原语合计 p50
+\newcommand{\StateFullMs}{344.4}  % docs\research\v04-latency.md:state 预算满时三原语合计 p50
+\newcommand{\BatchMergedMs}{375.9}  % docs\research\v04-latency.md:batch=3 合并成一次前向的 p50
+\newcommand{\BatchSeparateMs}{359.5}  % docs\research\v04-latency.md:三次 batch=1 各自前向的合计 p50
+\newcommand{\HeadLenChoice}{109}  % docs\research\v04-latency.md:route_team 的 head token 长度
+\newcommand{\HeadLenScore}{110}  % docs\research\v04-latency.md:urgency 的 head token 长度
+\newcommand{\LatSessions}{7}  % export/v04/latency_sessions.json:参与统计的 session 数
+\newcommand{\LatPFiveZeroBest}{317.60}  % export/v04/latency_sessions.json:跨 session 的最小 p50
+\newcommand{\LatPFiveZeroWorst}{806.44}  % export/v04/latency_sessions.json:跨 session 的最大 p50
+\newcommand{\LatSpread}{2.5}  % export/v04/latency_sessions.json:最慢/最快（本机 session 间波动倍数）
+\newcommand{\LatPFiveZeroMedian}{349.72}  % export/v04/latency_sessions.json:p50 中位的那次 session（表里的延迟行就是它）
+\newcommand{\EceOnnxChoice}{0.1014}  % export/v04_int8_calib_report.json:test_by_qtype.choice.ece_after（在 int8 图上标定后）
+\newcommand{\EceOnnxScore}{0.0228}  % export/v04_int8_calib_report.json:test_by_qtype.score.ece_after（在 int8 图上标定后）
+\newcommand{\EceOnnxNoul}{0.0717}  % export/v04_int8_calib_report.json:test_by_qtype.noul.ece_after（在 int8 图上标定后）
+\newcommand{\EceWorstOnnx}{0.1014}  % export/v04_int8_calib_report.json:worst_ece_after（三原语里最大的标定后 ECE）
+\newcommand{\AccOnnxScore}{0.9475}  % export/v04_int8_calib_report.json:test_by_qtype.score.accuracy（部署变体自身的 test 准确率）
+\newcommand{\CalibRecords}{855}  % export/v04_int8_calib_report.json:calib_records
 \newcommand{\AccScoreVZeroTwo}{0.5948}  % runs/v02_rlcd_e2/calibration_eval.json:test_after_calibration.score.accuracy
 \newcommand{\DeltaUrg}{0.3527}  % v03 与 v02 的 urgency 准确率之差（proxy 标签修复的净收益）
 \newcommand{\NoulPosBefore}{0.6548}  % data/adapted_v04/relabel_report_noul.json:train.true_rate_before（旧 proxy 标签）
@@ -129,6 +134,6 @@
 \newcommand{\AntibodyMajAcc}{0.5676}  % runs/v04_antibody/summary.json:majority_class.accuracy
 \newcommand{\SelfCheckN}{14}  % data/adapted_v03/relabel_report.json:selfcheck.divergence 的分母
 \newcommand{\SelfCheckDisagree}{3}  % data/adapted_v03/relabel_report.json:selfcheck.divergence 的分子（模型与规则基线分歧数）
-\newcommand{\TokMb}{32.8}  % export/v03-int8-ml256/tokenizer/tokenizer.json: 文件大小
+\newcommand{\TokMb}{32.8}  % export/v04-int8-ml256/tokenizer/tokenizer.json: 文件大小
 \newcommand{\AccCollapsed}{0.1866}  % docs\research\v03-quant-degradation.md:max_len 装不下 head 时 route_team 的准确率（正常值 0.9446）
 \newcommand{\AccScoreBroken}{0.7026}  % docs\research\v03-quant-degradation.md:同一条件下 urgency 的准确率

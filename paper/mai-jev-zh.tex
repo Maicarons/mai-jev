@@ -60,7 +60,8 @@
 我们从 Laya 的 322M 多语言 checkpoint 出发，在 \DataTotalRows{} 条经过审计的中文样本上做 RLCD 微调，
 在不与训练重叠的切分上做温度标定，得到最差单原语期望校准误差 \WorstEce{} —— 略高于我们 \num{0.10} 的目标线，
 我们如实报为未达标，而不是把它调掉 —— 并交付一个单图 int8-gather ONNX 包（\ModelMb\,MB）：
-在一张工单上回答全部三个原语，四个 CPU 线程上 p50 延迟 \LatPFiveZero\,ms，常驻内存 \RssMb\,MB。
+在一张工单上回答全部三个原语，四个 CPU 线程上常驻内存 \RssMb\,MB，
+同一二进制在同一台机上跑 \LatSessions{} 次 session 的 p50 中位为 \LatPFiveZeroMedian\,ms、区间 \LatPFiveZeroBest--\LatPFiveZeroWorst\,ms。
 
 两条结论是负面的，而我们认为它们比头条数字更可复用。第一，代理标签是主要误差来源，而且我们踩了两次同一个坑。
 早期 checkpoint 在 urgency 上只拿到 \AccScoreVZeroTwo{}，纯粹是因为公开代理标签标注的是\emph{情绪强度}而不是工单紧急度；
@@ -268,13 +269,17 @@ urgency 上同一个修正反向切进来：关键词规则在准确率上看着
 
 \subsection{效率}
 
+\label{sec:eff}
+
 表~\ref{tab:eff} 报告打包好的部署变体：单图 int8-gather ONNX 模型 \ModelMb\,MB（fp32 为 \FpThreeTwoMb\,MB），
 为 \BenchN{} 张工单在 \BenchThreads{} 个 CPU 线程上回答全部三个原语，
 p50--p95 为 \LatPFiveZero--\LatPNineFive\,ms，均值 \LatMean\,ms，加载后常驻 \RssMb\,MB，峰值 \RssPeakMb\,MB。
+这几个延迟数字取自**一次 session** —— 同一个二进制在同一台机上跑过的 \LatSessions{} 次 session 里 p50 中位的那一次，
+这些 session 的区间见表里最后一行；而常驻内存与加载耗时几乎不随 session 变。
 
 \begin{table}[t]
 \centering
-\caption{部署变体，batch size 一，\BenchThreads{} 线程，序列上限 \BenchMaxLen，重复 \BenchN{} 次。延迟覆盖一张工单的三个原语。}
+\caption{部署变体，batch size 一，\BenchThreads{} 线程，序列上限 \BenchMaxLen，重复 \BenchN{} 次。延迟覆盖一张工单的三个原语；延迟行取自一次 session（\LatSessions{} 次里的中位），最后一行给出全部这些 session 在同一台机上的区间。}
 \label{tab:eff}
 \begin{tabular}{lr}
 \toprule
@@ -286,23 +291,35 @@ tokenizer & \TokMb\,MB \\
 模型加载耗时 & \LoadS\,s \\
 三原语 p50 延迟 & \LatPFiveZero\,ms \\
 p95 延迟 & \LatPNineFive\,ms \\
+同一二进制、其它 session 的 p50 & \LatPFiveZeroBest--\LatPFiveZeroWorst\,ms \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 量化的精度代价可以忽略：在同一测试切分上相对 fp32 图，部署变体逐原语的偏差是 \QuantDeltaChoice{}、\QuantDeltaScore{}、\QuantDeltaNoul{}。
 
-\emph{版本说明。} 本小节与第~\ref{sec:quant} 节描述的是 \texttt{v03} 包，也就是今天发布的那个产物。
-第~\ref{sec:noul} 节的 \texttt{v04} checkpoint 与它的差别只在二值头的权重，导出图的体积完全相同，
-因此体积、内存与延迟数字按构造原样沿用；\texttt{v04} 权重的量化变体逐原语精度，等那个包真正构建时再测量 ——
-我们不报没有测过的数字。
+\emph{上面的延迟是「某一个 session」的数，这台机器不会一直给你这个数。} 对同一个包、同一条命令重复测量
+（不改代码、不改配置、不改输入），\LatSessions{} 次 session 里 p50 从 \LatPFiveZeroBest{} 到 \LatPFiveZeroWorst\,ms 都出现过，
+相差 \LatSpread{} 倍；同期物理内存一直充裕，而模型加载耗时跟着一起变 ——
+所以原因在机器侧而不是编码器，我们也**没能**把它归到某一个机制上。因此我们报「一个 session 的数 + 跨 session 的区间」，
+并且**不宣称**本次工作重述的那条验收线（三原语合计 p50 低于 \SI{500}{\milli\second}）已经达标：
+它在机器快的 session 里达标，在慢的 session 里不达标。部署目标是比这台更老的机器，所以这些数字在两种情况下都只是乐观上界。
+
+\emph{版本说明。} 今天发布的产物是第~\ref{sec:noul} 节的 \texttt{v04} checkpoint，本小节与第~\ref{sec:quant} 节的数字都测自它
+（延迟与内存取自第~\ref{sec:eff} 节 \LatSessions{} 次 session 里 p50 中位的那一次，区间见表里最后一行；
+state 预算扫描那一组是同一二进制的**另一次** session）。只有一项研究是沿用的：表~\ref{tab:quant} 的量化方案对比
+测的是 \texttt{v03} 图，因为 v0.3 与 v0.4 导出的图算子集与文件体积完全相同，差别只在二值头的权重。
+两个包的延迟实测落在同一个「随机器状态浮动」的区间里，所以我们认为那份对比对两者都成立，并在正文里明说，
+而不是把它包装成一次 \texttt{v04} 测量。
 
 \subsection{延迟由问句决定，而不是正文}
 
-上面的 p50 比「322M 模型跑四个线程」的直觉高一个数量级，而原因不在编码器。问句头很长 ——
-\texttt{choice} 与 \texttt{score} 的判定标准是每个选项一句中文 —— 渲染出来的头约占 110 个 token，
-而训练长度下工单正文的中位数是 \TokPFiveZero{} 个 token。把延迟当作状态预算的函数来测，可以看出
-在\emph{零}工单 token 时三个头就已需要 \StateOnlyMs\,ms，直到把预算拉满也只升到 \StateFullMs\,ms。由此得到两条结论，两条都是负面结果：
+上面的 p50 比「322M 模型跑四个线程」的直觉高好几倍，而原因不在编码器。问句头很长 ——
+\texttt{choice} 与 \texttt{score} 的判定标准是每个选项一句中文 —— 渲染出来分别占 \HeadLenChoice{} 与 \HeadLenScore{} 个 token，
+而训练长度下工单正文的中位数是 \TokPFiveZero{} 个（上限 \BenchMaxLen{}）。**在同一个 session 内**看：
+完全不读正文时三个头就已要 \StateOnlyMs\,ms，读完整张真实工单是 \StateFullMs\,ms ——
+账单的大头是问句，不是文档；所以「把文档变短」并不能把 322M 编码器拉到单问句 \num{50}~ms 的预算。
+（绝对值与表~\ref{tab:eff} 里的一切一样随机器浮动，这个对比是在一个 session 内做的。）由此得到两条结论，两条都是负面结果：
 
 \begin{enumerate}
   \item 对这类模型、在四个 CPU 线程上，单问句 p50 低于 \num{50}~ms 是不可达的；预算被问句吃掉了，不是被文档。
@@ -342,7 +359,8 @@ fp32 & \FpThreeTwoMb & \num{1.000} & 超出 \SI{1}{\giga\byte} 预算 \\
 \paragraph{温度是逐变体的。} 在量化图上用同一套流程、同一个标定切分拟合温度，得到的是
 \TChoiceOnnx{}、\TScoreOnnx{}、\TNoulOnnx{}，而不是 \TChoice{}、\TScore{}、\TNoul{}。这不是拟合器的 bug：
 量化改变了 logit 的尺度，所以权重蕴含的置信度不是图实际吐出的置信度。
-跨变体沿用一个温度会把最差单原语 ECE 顶到 \num{0.10} 目标线之上，而逐变体重拟合能把它拉回 \EceWorstOnnx{}。
+跨变体沿用一个温度会把最差单原语 ECE 顶到 \num{0.10} 目标线之上；逐变体重拟合能把它降到 \EceWorstOnnx{}，仍在线上。
+这次不达标我们照实报出，和训练图那次一起报，而不是按测试切分去挑温度。
 因此我们在每个导出目录里各放一份 \path{calibration.json}，并把「跨变体复用温度」当作发布错误。
 
 \paragraph{Batching 会破坏数值。} 右 padding 的 batch 里超过一行时，短的 \texttt{noul} 行会返回非有限值，
@@ -367,6 +385,7 @@ fp32 & \FpThreeTwoMb & \num{1.000} & 超出 \SI{1}{\giga\byte} 预算 \\
 要真正修好，得扩大标定切分，或者在它内部另留一子集按 ECE 选温度：那是标定方法的改动，不是这个模型的改动。
 因此我们不声称这个模型「可靠校准」，我们声称的是：在这个留出的中文工单分布上、这个模型尺寸下、逐变体拟合之后，
 实测最差 ECE 为 \WorstEce{}。温度拟合最小化的是似然而不是 ECE，而各原语 ECE 变化的方向并不一致，这在图~\ref{fig:ece} 里看得到。
+我们交付的量化变体在同一条线上以同一方向不达标（\EceWorstOnnx{}）：这是这个 checkpoint 在这个规模上的性质，不是导出路径的问题。
 
 \paragraph{第二个代理标签在数据里修好了，在模型里只修好一半。} 第~\ref{sec:noul} 节重标了二值标签并重训，所以那笔标签债是还清的：
 该原语达到准确率 \AccNoul{}、均衡 \BAccNoul{}，对照恒答基线的 \MajAccNoul{} 与关键词基线的 \RulesBAccNoul{}。
@@ -376,8 +395,9 @@ fp32 & \FpThreeTwoMb & \num{1.000} & 超出 \SI{1}{\giga\byte} 预算 \\
 并没有让它获得定义这个分布的边界样本。把这些反例喂进训练，或者建设一份人工审计的二值标注集，是下一步；
 在那之前，我们把这个原语当作「复核用」而不是「可自动执行」。
 
-\paragraph{硬件。} 所有延迟与内存数字都测自一台当代笔记本级的 x86 CPU、四个线程。部署目标是一台更老的机器，
-它只可能更慢；所以我们的数字是一个乐观上界，不是那个目标机能力的证明。
+\paragraph{硬件。} 所有延迟与内存数字都测自一台台式 x86 CPU、四个线程。这些数字的浮动比模型侧的任何效应都大 ——
+同一个二进制在同一台机上跑 \LatSessions{} 次 session，p50 从 \LatPFiveZeroBest{} 到 \LatPFiveZeroWorst\,ms 都出现过 ——
+而部署目标是一台更老的机器，它只可能更慢。所以我们的数字是「某一个 session 的乐观上界」，不是那个目标机能力的证明。
 
 \paragraph{数据许可与用途。} 训练数据取自 MIT 与 CC~BY~4.0 来源，署名记录在 \path{DATASETS.md} 里；
 CC~BY~4.0 的署名义务不会传染进模型权重，但我们仍然保留相关声明。

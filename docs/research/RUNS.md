@@ -134,6 +134,8 @@ checkpoint 落在 `$WORK\runs\smoke\`（`model.safetensors` 643MB，含 `checkpo
 
 1. 「三原语合计 p50 < 500ms」**只有 0–16% 余量且逐次运行漂移**（421 ↔ 499ms，同一台机、同一输入），
    p95 是 1.7–2.0× 超线。对外只能报区间 + 「训练机上」这个限定，不能报单点、不能称稳定达标。
+   ⇒ **同一天晚些时候已查明：真实区间比这里宽得多**（同一个包 318–806ms），见下面
+   「2026-10-17 跨 session 波动」条。
 2. 发布页（`docs/model-card.md`，即 ModelScope 的 README）当时报的「p50 380ms / 1029 条工单」
    两头都不对：变体错（ml96）、样本数错（复测是 n=150；`bench_report.json` 的 workload 是
    200 条 / repeats 40）。已在 2026-10-17 的提交里改成发布变体自己的数字并写明来源。
@@ -388,5 +390,77 @@ v0.4 只是把噪声落在了线的另一侧 0.006。我们**没有**按 test EC
   （旧头 × 新标签）、`runs\v04_antibody\summary.json`（反例集，`eval_noul_antibody.py --out`）。
 - 论文：`paper/mai-jev.tex` + `paper/generated/`（宏由 `make_paper_tables.py` 从上面这些 JSON 生成；
   v0.4 需要 `--noul-json` / `--noul-oldhead-json` / `--antibody-json` 三个新入参）。
+
+---
+
+## 2026-10-17 跨 session 延迟波动（同一个包，实测 p50 317.60–806.44ms）
+
+**触发**：复核发布变体的延迟时发现，同一条命令、同一个包、同一份输入，端到端 p50 在 318ms 与
+806ms 之间来回跳（2.5×）。这不是模型或包的差异 —— v0.3 与 v0.4 两个包各自跨满整个区间。
+
+### 7 次 session（每次 n=150，同一个包 `export\v04-int8-ml256`，4 线程，batch=1）
+
+| # | 来源文件 | p50 | p95 | mean | 加载后常驻 | load |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `ab_v04_2.json` | 317.60 | 387.22 | 322.43 | 796.9 | 3.14s |
+| 2 | `v04_bench_run1.json` | 328.27 | 409.87 | 329.06 | 796.5 | 3.50s |
+| 3 | `v04_bench_run2.json` | 329.47 | 392.20 | 330.76 | 796.6 | 3.19s |
+| 4 | `v04_bench_final.json` | **349.72** | 432.75 | 348.46 | 796.9 | 3.20s |
+| 5 | `v04/latency_session.json`（探针补跑） | 361.55 | 462.32 | 367.43 | 814.8 | 3.69s |
+| 6 | `v04/latency_session_probe1.json`（探针首跑） | 374.35 | 820.09 | 457.94 | 814.8 | 3.77s |
+| 7 | `ab_v04_1.json` | 806.44 | 1023.70 | 783.19 | 797.2 | 4.76s |
+
+区间 **317.60–806.44ms（2.54×）**。论文表里的延迟行取 p50 中位的那一次（#4），
+区间单独一行；`\LatSessions` / `\LatPFiveZero*` / `\LatSpread` 由
+`export\v04\latency_sessions.json` 经 `make_paper_tables.py` 生成。
+
+### 模型侧无效应的证据（A/B 背靠背交替，同一个进程）
+
+`_ab_bench.py`（工作区一次性脚本，未入仓）在同一个进程里按 v0.4 → v0.3 → v0.3 → v0.4 交替跑：
+
+| 顺序 | 包 | p50 | load |
+| --- | --- | --- | --- |
+| 1 | v0.4 | 806.44 | 4.76s |
+| 2 | v0.3 | 756.74 | 4.44s |
+| 3 | v0.3 | 372.96 | 2.85s |
+| 4 | v0.4 | 317.60 | 3.14s |
+
+两个包**分布完全重叠、各自跨满区间**；两包的 `model.onnx` 字节数完全相同（698,398,887 B）、
+`questions.json` 与 `tokenizer.json` 哈希相同、喂入序列长度相同 ⇒ 差异来自机器状态，与包无关。
+
+### 排查过并排除的机制
+
+- **内存**：不是内存压力。快 session 空闲物理内存 20.3GB / 总 30.4GB（占用 41–45%），
+  波动期间 `FreePhysicalMemory` 一直充裕；7 次 session 的常驻内存都落在 797–815MB 这条窄带上。
+- **加载耗时同向变化**：慢 session 加载 4.4–4.9s、快 session 2.9–3.8s，与 p50 一起变 ⇒
+  不是编码器、不是图、不是量化方案。
+- **频率/计数器**：`% Processor Performance` 在一次快 session 里记录到 208% → 137% 的下滑，
+  但**没有单调解释**（有时 160%+ 依然很慢）。
+- **一次极端的坏 session（已丢弃、不进任何统计）**：探针某一轮跑到 20 分钟仍未结束，
+  进程工作集被系统从 930MB 修剪到 176MB、page faults 433k/s、CPU 只占 0.3 核 ——
+  权重被换出，每次前向都在缺页。这一轮的数字**没有进上面的表**。
+
+**结论（未定机制）**：本机在快/慢两个「速度档」之间跳，档位切换的原因没有查实。
+所以论文与模型卡只报「一个 session 的数 + 跨 session 区间」，并且**不宣称
+「三原语合计 p50 < 500ms」达标**（快 session 达标、慢 session 不达标）。
+
+另：state 预算扫描必须**在同一个 session 内**做，且**不要**用合成长正文去凑长度 ——
+那会把「256 token 合成序列」的成本当成真实工单的成本。现在的口径是真实工单 + `state` 只截不补，
+各档实际序列长度记在 `v04\latency_session.json` 的 `sweep.by_question.*.seq_len` 里
+（真实工单正文只有几十 token，所以 64/96/满 三档会截到同一条序列，这是预期行为，不是延迟异常）。
+
+### 复现
+
+```powershell
+# 端到端（与 deploy.py CLI 同一处计时代码）
+python -m mai_jev.deploy --model-dir $WORK\export\v04-int8-ml256 `
+  --input $WORK\export\bench_input.jsonl --repeats 150
+# 一次进程量完三组数（端到端 + state 预算 + batching），并生成 docs/research/v04-latency.md
+python scripts/probe_latency_session.py --model-dir $WORK\export\v04-int8-ml256 `
+  --input $WORK\export\bench_input.jsonl --threads 4 --repeats 150 --warmup 8 `
+  --out-json $WORK\export\v04\latency_session.json --out-md docs\research\v04-latency.md
+```
+
+**跨 session 不可比**：要横向比较两个变体，必须在**同一个 session 里交替测**（上面那张 A/B 表就是这么来的）。
 
 

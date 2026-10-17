@@ -145,6 +145,11 @@ def main() -> None:
                     help="calibrate_export.py --report 的产物：量化变体自身重拟合温度后的 test 指标")
     ap.add_argument("--export-dir", default="export/v03-int8-ml256",
                     help="发布变体目录，只用它量 tokenizer 大小")
+    ap.add_argument("--quant-variant-dir", default="v03-int8-ml256",
+                    help="量化变体自己的 calibration.json 在哪：绝对路径，或相对 --bench-json 所在目录的子目录名")
+    ap.add_argument("--latency-sessions", default="",
+                    help="跨 session 的端到端 p50 列表（同一个包、同一条命令的不同 session）；"
+                         "本机不同 session 的 p50 能差 2.5 倍，所以论文报区间而不是单点")
     # bench_report.json 的 parity 只对 96/128/512 三档测过；默认取 512（唯一 state 预算充足的一档）。
     ap.add_argument("--parity-max-len", type=int, default=512,
                     help="bench_report.json 的 parity 用哪个 max_len 分区（96/128/512）")
@@ -273,7 +278,10 @@ def main() -> None:
             m.add(f"QuantDelta{key}", num(q["degradation"][prim], 4), f"quant_report.json:degradation.{prim}")
         # 量化变体自己的标定：温度是「权重 + 推理后端」的耦合属性，跨变体复用会让 ECE 悄悄失效，
         # 所以 int8 图必须带一份自己拟合的 calibration.json。
-        for variant, cal in (("Onnx", qpath.parent / "v03-int8-ml256" / "calibration.json"),):
+        qvdir = Path(args.quant_variant_dir)
+        if not qvdir.is_absolute():
+            qvdir = qpath.parent / qvdir
+        for variant, cal in (("Onnx", qvdir / "calibration.json"),):
             c = load(cal)
             for key, t in zip(("Choice", "Score", "Noul"), c["temperature"]):
                 m.add(f"T{key}{variant}", num(t, 4), f"{cal}:temperature（在该变体图上重拟合）")
@@ -317,6 +325,25 @@ def main() -> None:
             if not hit:
                 raise SystemExit(f"{lat} 里找不到「{desc}」对应的数字（正则 {pat}），请先重跑 scripts/probe_batch_merge.py。")
             m.add(name, hit.group(1), f"{args.latency_report}:{desc}")
+
+    # ---- 跨 session 的延迟波动（同一个包、同一条命令，不同 session 实测差 2.5 倍）----
+    # 这台机器在两个「速度档」之间跳：同一个二进制、同一条命令，实测 p50 从 318ms 到 806ms
+    # 都出现过（见 docs/research/RUNS.md 2026-10-17 条）。所以论文只报区间，不报单点当结论。
+    if args.latency_sessions:
+        ls = load(Path(args.latency_sessions))
+        p50s = [float(s["p50"]) for s in ls["sessions"]]
+        if not p50s:
+            raise SystemExit(f"{args.latency_sessions} 里没有任何 session")
+        m.add("LatSessions", str(len(p50s)), f"{args.latency_sessions}:参与统计的 session 数")
+        m.add("LatP50Best", num(min(p50s), 2), f"{args.latency_sessions}:跨 session 的最小 p50")
+        m.add("LatP50Worst", num(max(p50s), 2), f"{args.latency_sessions}:跨 session 的最大 p50")
+        m.add("LatSpread", num(max(p50s) / min(p50s), 1),
+              f"{args.latency_sessions}:最慢/最快（本机 session 间波动倍数）")
+        med = (ls.get("median_session") or {}).get("p50")
+        if med is None:                              # 文件里没写就自己算（偶数取上中位）
+            med = sorted(p50s)[len(p50s) // 2]
+        m.add("LatP50Median", num(med, 2),
+              f"{args.latency_sessions}:p50 中位的那次 session（表里的延迟行就是它）")
 
     # ---- 量化变体自己的标定结果（calibrate_export.py --report）----
     crep = Path(args.int8_calib_report)

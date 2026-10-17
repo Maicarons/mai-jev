@@ -99,26 +99,13 @@ All numbers below come from a held-out test split that was **never used for
 training or temperature fitting**. Macro accuracy is the mean over the three
 primitives.
 
-| Model | route_team | urgency | noul | macro |
-| --- | --- | --- | --- | --- |
-| **mai-jev (torch, calibrated)** | 0.9475 | 0.9329 | 0.8513 | **0.9106** |
-| mai-jev (shipped int8-gather ONNX, calibrated) | 0.9475 | 0.9359 | 0.8484 | 0.9106 |
-| `convaiinnovations/laya-multilingual` (base, zero-shot) | 0.4898 | 0.0845 | 0.6414 | 0.4052 |
-| Keyword rule baseline | 0.4373 | 0.5918 | 0.4111 | — |
-| Majority class | 0.3586 | 0.7026 | 0.6356 | — |
-
-> **Which labels these numbers use.** The table above describes the **published v0.3**
-> model under the **v0.3 label definition** (in particular the `noul` proxy — see the
-> `noul` bullet under *Known limitations* below). `route_team` and `urgency` are
-> unchanged in v0.4; `noul` was relabelled there, so its 0.8513 / 0.6414 / 0.4111 /
-> 0.6356 entries are **not comparable** to any v0.4 `noul` figure.
-
-### v0.4 (in-repo, same test split, new `noul` labels)
+### v0.4 (this release, same test split, new `noul` labels)
 
 | Model | route_team | urgency | noul | macro |
 | --- | --- | --- | --- | --- |
-| **mai-jev v0.4 (torch, calibrated)** | 0.9300 | 0.9475 | 0.9300 | **0.9359** |
+| **mai-jev v0.4 (fp32 / torch, calibrated)** | 0.9300 | 0.9475 | 0.9300 | **0.9359** |
 | — same, balanced accuracy | 0.9378 | 0.8555 | **0.8923** | — |
+| mai-jev v0.4, shipped int8-gather ONNX (calibrated) | 0.9329 | 0.9475 | 0.9300 | 0.9368 |
 | v0.3 `noul` head, re-scored on the new labels | — | — | 0.4898 (bal. 0.5733) | — |
 | Keyword rule baseline (new labels) | 0.4373 | 0.5918 | 0.8484 (bal. 0.6711) | — |
 | Majority class (new labels) | 0.3586 | 0.7026 | 0.7959 | — |
@@ -130,30 +117,47 @@ was mostly the label definition. The retrained head reaches 0.8923 balanced agai
 0.6711 for the keyword table — and note that the keyword table is *competitive on raw
 accuracy* (0.8484), which is why `noul` is judged on balanced accuracy.
 
-> **v0.4 is in-repo, not published.** Hugging Face / ModelScope still ship the v0.3
-> package. The packaging figures below (size, memory, latency, quantisation cost)
-> belong to that published package; v0.4 differs from it only in the `noul` head's
-> weights, and its ONNX export has an identical graph size.
+Quantisation costs at most **0.29 accuracy points** on any primitive, and where the
+shipped int8-gather graph differs from eager at all it is *better* (`route_team`
+0.9329 against 0.9300; `urgency` and `noul` unchanged), on the whole 343-row test
+split. Worst single-primitive ECE after re-fitting temperature on each variant's own
+calibration split: **0.1061 (fp32) / 0.1014 (int8)** — both above the 0.10 target,
+reported as misses (see *Calibration*).
 
-Quantisation costs at most **0.29 accuracy points** on any primitive (whole 343-row
-test split, eager vs. int8-gather graph; measured on the v0.3 package). Worst
-single-primitive ECE after re-fitting temperature on each variant's own calibration
-split: **0.0871 (torch) / 0.0927 (int8)**.
+### v0.3 (previous release, old `noul` labels)
+
+The table below is the **previous** package under the **v0.3 label definition**, kept
+for comparison only. The `route_team` and `urgency` *criteria and labels* are unchanged
+in v0.4 — their small accuracy differences below come from the retrain, not from a
+relabel — while `noul` itself was relabelled, so its 0.8513 / 0.6414 / 0.4111 / 0.6356
+entries are **not comparable** to any v0.4 `noul` figure.
+
+| Model | route_team | urgency | noul | macro |
+| --- | --- | --- | --- | --- |
+| mai-jev v0.3 (torch, calibrated) | 0.9475 | 0.9329 | 0.8513 | **0.9106** |
+| mai-jev v0.3 (shipped int8-gather ONNX, calibrated) | 0.9475 | 0.9359 | 0.8484 | 0.9106 |
+| `convaiinnovations/laya-multilingual` (base, zero-shot) | 0.4898 | 0.0845 | 0.6414 | 0.4052 |
+| Keyword rule baseline | 0.4373 | 0.5918 | 0.4111 | — |
+| Majority class | 0.3586 | 0.7026 | 0.6356 | — |
 
 ### Calibration
 
 Per-primitive temperature is fit on a held-out calibration split and applied at
 inference. Expected Calibration Error (ECE, 15 bins) on the held-out test set:
 
-- torch variant (v0.3): worst single-primitive ECE = **0.0871** (≤ 0.10 target met)
-- int8 variant (v0.3): worst single-primitive ECE = **0.0927** (≤ 0.10 target met)
-- torch variant (v0.4): worst single-primitive ECE = **0.1061** — **above the 0.10
-  target, reported as a miss.** The routing temperature fitted by likelihood *raises*
-  test ECE (0.0466 before fitting → 0.1061 after) while accuracy is unchanged at
-  0.9300; the previous checkpoint behaved the same way at nearly the same temperature
-  (1.1057 vs 1.1131), so at 343 test rows this line is decided by sampling noise
-  rather than by method. We did not pick the temperature by test ECE — that would be
-  fitting on the test set. Details: `docs/research/RUNS.md`.
+- **fp32 / torch, this release (v0.4)**: worst single-primitive ECE = **0.1061**
+  (`route_team`) — **above the 0.10 target, reported as a miss.** The routing
+  temperature fitted by likelihood *raises* test ECE (0.0466 before fitting → 0.1061
+  after) while accuracy is unchanged at 0.9300; the previous checkpoint behaved the
+  same way at nearly the same temperature, so at 343 test rows this line is decided by
+  sampling noise rather than by method. We did not pick the temperature by test ECE —
+  that would be fitting on the test set. Details: `docs/research/RUNS.md`.
+- **shipped int8-gather ONNX, this release (v0.4)**: worst single-primitive ECE after
+  re-fitting on the graph's *own* calibration split = **0.1014** (`route_team`) — also
+  **above the target, also reported as a miss**; `urgency` (0.0228) and `noul` (0.0717)
+  sit comfortably inside it. Temperatures: `[1.1028, 3.1577, 1.2217]`.
+- previous release (v0.3), for reference: worst single-primitive ECE = **0.0871**
+  (torch) / **0.0927** (int8), both inside the target under the *old* `noul` labels.
 
 > **Thin margin.** The calibration target was minimising negative log-likelihood,
 > not ECE, so individual primitives can move slightly after calibration. Do not
@@ -165,22 +169,30 @@ Measured on the release variant (`onnx/`, `int8-gather`, `max_len=256`), 4 threa
 batch=1, exact-length inference, 150 real tickets, one ticket through all three
 primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
 
-- Resident memory: **796 MB** (≤ 1 GB target met)
-- Latency: **p50 = 421–499 ms, p95 = 862–976 ms**, mean 530–584 ms (range over two
-  runs on the same host)
+- Model size on disk: **666 MB** (fp32 reference 1229 MB)
+- Resident memory: **797 MB** after load, 815 MB peak (≤ 1 GB target met)
+- Model load time: **3.2 s**
+- Latency, all three primitives for one ticket: **p50 350 ms, p95 433 ms** — in one
+  session; across **7 sessions** of the same binary on the same host: **p50 318–806 ms**
 
-> **Read this before quoting the latency.** The numbers above are the release
-> variant's own end-to-end measurement, and they are the ones to trust. An earlier
-> published figure — p50 380 ms — came from `mai-jev-int8-ml96`, whose `max_len=96`
-> cannot fit this checkpoint's 109/110-token question heads; that variant silently
-> dropped the ticket body and scored 0.187 on `route_team`. It is **not** a valid
-> measurement for this model and must not be quoted.
+> **Read this before quoting the latency.** The latency figures above are one session
+> of the release variant's own end-to-end measurement. Repeating the identical command
+> on the same package — no change of code, configuration or input — the same binary
+> spanned **p50 318–806 ms over 7 sessions** (2.5×) on this host, while resident memory
+> stayed inside a narrow 797–815 MB band in every one of them; the model's load time
+> moved with the latency (3.1 s to 4.9 s), so the spread is host-side, not in the encoder
+> or the graph, and we could not pin it to one mechanism. The deployment latency is
+> therefore **not a single number**, and we do **not** claim the restated acceptance line
+> ("three primitives combined p50 < 500 ms"): it is met in this host's fast sessions and
+> missed in its slow ones, and the deployment target is older than this host.
 >
-> With p50 at 84–100% of the 500 ms budget and p95 at 1.7–2.0× it, the restated
-> acceptance line ("three primitives combined p50 < 500 ms") is **met only
-> marginally and not robustly**, and it was measured on a desktop-class CPU — a real
-> target machine will be slower. The original line (single-primitive p50 < 50 ms)
-> is unreachable at this size on 4 CPU threads and is reserved for a future
+> Two earlier figures are withdrawn. **p50 380 ms** came from `mai-jev-int8-ml96`,
+> whose `max_len=96` cannot fit this checkpoint's 109/110-token question heads — that
+> variant silently dropped the ticket body and scored 0.187 on `route_team`, so it is
+> not a measurement of this model at all. **p50 421–499 ms** was a two-run spread on
+> one afternoon; the 7-session measurement above shows that range was too narrow. The
+> original line (single-primitive p50 < 50 ms) remains unreachable at this size on 4
+> CPU threads — the question heads alone need 244 ms — and is reserved for a future
 > ≤500 MB distilled tier.
 
 > **Hard constraint:** deploy with `batch=1` and exact-length inference. In
@@ -190,9 +202,9 @@ primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
 
 ## Known limitations & negative results
 
-- **`urgency` is not business-accurate.** Its 0.9329 measures reproduction of a
+- **`urgency` is not business-accurate.** Its 0.9475 measures reproduction of a
   *structured urgency proxy* (a graded evidence labeller), not real SLA/priority.
-  Balanced accuracy is only 0.8009, and on a 14-ticket manual sample it disagreed
+  Balanced accuracy is only 0.8555, and on a 14-ticket manual sample it disagreed
   with the rule baseline on 3. Treat `urgency` as a **reference score**, not an
   auto-decision.
 - **`needs_refund_or_escalation` (noul) has a label-provenance caveat** (relabelled in
@@ -213,8 +225,9 @@ primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
   present them as a delta; (b) after relabelling the **keyword rule baseline scores
   0.8484 (balanced 0.6711)** on the same test split — the model must beat that to be
   worth anything. Metrics: `docs/research/RUNS.md`. Definition: `CONTEXT.md`.
-  v0.4 is **in-repo, not published**; the Hugging Face / ModelScope artifacts still
-  ship v0.3.
+  The Hugging Face / ModelScope artifacts ship **v0.4**, the package described above;
+  v0.3 is superseded and its `noul` figures are kept only as the comparison in the
+  v0.3 table.
 - **The re-graded `noul` label is reproduced, not yet learned.** On a 37-row
   hand-written counterexample slice (present in **no** split, built so that the cue
   words and the correct verdict deliberately disagree) the v0.4 head scores
@@ -224,8 +237,10 @@ primitives per sample (`python -m mai_jev.deploy --input ... --repeats 150`):
   distribution without acquiring the boundary cases that define it. Until those rows
   are trained on, or a human-audited `noul` set exists, treat this primitive as
   **review-only**. Reproduce: `scripts/eval_noul_antibody.py`.
-- **Latency was measured on a desktop-class CPU**; a real old laptop will be slower.
-  Re-measure on the actual target before relying on the p50 figures.
+- **Latency is not a stable number on this host.** It was measured on a desktop-class
+  CPU, and the same binary spans p50 318–806 ms depending on the session (see
+  *Efficiency*); a real old laptop will be slower than either end. Re-measure on the
+  actual target before relying on the p50 figures, and quote the range, not a point.
 - **`zh-decision-bench` was used for evaluation only** and the model was never
   trained on it.
 - This is **System One**, not a chat model: it does not explain or negotiate, it

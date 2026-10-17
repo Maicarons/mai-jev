@@ -15,8 +15,10 @@
 __pycache__/
 *.pyc
 
-# 排错脚本的临时产物：这些是一次性探针，用完就删，不留下当依赖。
-probe_*.py
+# 排错脚本的临时产物：这些一次性探针用完就删，不留下当依赖。
+# 只忽略仓库根目录下的一次性探针；scripts/probe_latency_session.py 是要留的工具，
+# 不能被这条规则吞掉（它生成 docs/research/v04-latency.md）。
+/probe_*.py
 scripts/_probe_*.py
 
 # 用户凭证：绝对不能进版本库。
