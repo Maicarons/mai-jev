@@ -8,7 +8,7 @@
 # dependabot 会想把它升到 PyPI 默认版（CPU-only），已在 .github/dependabot.yml 里 ignore。
 torch==2.6.0+cu124
 torchvision==0.21.0+cu124
-transformers==5.19.0
+transformers==5.20.2
 tokenizers==0.23.3
 safetensors==0.8.0
 datasets==5.1.0
